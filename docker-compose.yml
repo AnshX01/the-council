@@ -1,0 +1,24 @@
+services:
+  the-council:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: the-council-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - MAX_CONCURRENCY=${MAX_CONCURRENCY:-4}
+      - SESSION_TIMEOUT_MS=${SESSION_TIMEOUT_MS:-300000}
+      - CALL_BUDGET=${CALL_BUDGET:-60}
+      - DEFAULT_MAX_ROUNDS=${DEFAULT_MAX_ROUNDS:-3}
+      - USE_MOCK_PROVIDER=${USE_MOCK_PROVIDER:-false}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
