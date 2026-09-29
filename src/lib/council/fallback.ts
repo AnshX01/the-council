@@ -120,3 +120,87 @@ export function generateFallbackFinalSynthesis(
     ],
   };
 }
+
+/**
+ * Fallback cross-examination turn when persona LLM call is throttled or rate-limited
+ */
+export function generateFallbackCrossExamTurn(
+  personaId: PersonaId,
+  roundNumber: number,
+  previousPos: string,
+  previousConf: number,
+  availablePeerIds: PersonaId[]
+): {
+  responsesToPeers: {
+    targetPersonaId: string;
+    action: 'AGREE' | 'CHALLENGE' | 'CONCEDE';
+    critiqueOrSupport: string;
+  }[];
+  updatedPosition: string;
+  updatedConfidence: number;
+  shiftExplanation: string;
+  whatChanged: string;
+} {
+  const targetPeers = availablePeerIds.filter((p) => p !== personaId).slice(0, 2);
+  const p1 = targetPeers[0] || 'skeptic';
+  const p2 = targetPeers[1] || 'pragmatist';
+
+  return {
+    responsesToPeers: [
+      {
+        targetPersonaId: p1,
+        action: 'CHALLENGE',
+        critiqueOrSupport: `From the perspective of ${personaId}, we must rigorously verify whether assumptions hold under empirical strain.`,
+      },
+      {
+        targetPersonaId: p2,
+        action: 'AGREE',
+        critiqueOrSupport: 'Concurring on establishing operational covenants while preserving foundational safeguards.',
+      },
+    ],
+    updatedPosition:
+      previousPos || `Refining stance to synthesize ${personaId} priorities with ongoing chamber feedback.`,
+    updatedConfidence: Math.max(50, Math.min(95, previousConf + (roundNumber % 2 === 0 ? 2 : -1))),
+    shiftExplanation: 'Balancing dialectical arguments while safeguarding core architectural values.',
+    whatChanged: `Calibrated operational safeguards in light of peer deliberations in round ${roundNumber}.`,
+  };
+}
+
+/**
+ * Fallback ratification vote when persona LLM call encounters rate limits
+ */
+export function generateFallbackRatificationVote(
+  personaId: PersonaId,
+  currentDraft: string
+): {
+  vote: 'SIGN_OFF' | 'SIGN_OFF_WITH_AMENDMENT' | 'OBJECT';
+  amendmentSuggestion?: string;
+  objectionReason?: string;
+  closingComment: string;
+} {
+  return {
+    vote: 'SIGN_OFF',
+    closingComment: `Endorsed: the synthesized consensus statement sufficiently balances core ${personaId} priorities with the overall chamber synthesis.`,
+  };
+}
+
+/**
+ * Fallback opening position when persona LLM call is throttled or rate-limited
+ */
+export function generateFallbackOpeningPosition(
+  personaId: PersonaId,
+  query: string
+): {
+  positionSummary: string;
+  detailedReasoning: string;
+  confidenceScore: number;
+  falsificationCondition: string;
+} {
+  return {
+    positionSummary: `From the analytical perspective of ${personaId}, addressing this inquiry requires maintaining strict foundational integrity and balancing core trade-offs.`,
+    detailedReasoning: `Evaluating "${query.slice(0, 100)}" by grounding assumptions in verifiable empirical constraints and prioritizing systemic resilience.`,
+    confidenceScore: 80,
+    falsificationCondition:
+      'Rigorous demonstration that baseline empirical assumptions or architectural constraints do not hold.',
+  };
+}

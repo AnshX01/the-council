@@ -66,8 +66,9 @@ export class GeminiProvider implements LLMProvider {
         'gemini-3.5-flash',
         'gemini-3.5-flash-lite',
         'gemini-3.1-flash-lite',
-        'gemini-3.8-flash',
         'gemini-flash-latest',
+        'gemini-flash-lite-latest',
+        'gemini-3.8-flash',
       ])
     );
 
@@ -84,7 +85,10 @@ export class GeminiProvider implements LLMProvider {
         });
         const text = response?.text;
         if (text !== undefined) {
-          this.modelId = model;
+          // If our current model was failing, update to the verified working candidate
+          if (this.modelId !== model && (this.modelId.includes('1.5') || this.modelId.includes('2.0') || this.modelId.includes('2.5'))) {
+            this.modelId = model;
+          }
           return { ok: true, latencyMs: Date.now() - start };
         }
       } catch (err: any) {
@@ -109,8 +113,9 @@ export class GeminiProvider implements LLMProvider {
         'gemini-3.5-flash',
         'gemini-3.5-flash-lite',
         'gemini-3.1-flash-lite',
-        'gemini-3.8-flash',
         'gemini-flash-latest',
+        'gemini-flash-lite-latest',
+        'gemini-3.8-flash',
       ])
     );
 
@@ -123,13 +128,19 @@ export class GeminiProvider implements LLMProvider {
           config: params.config,
         });
         if (response) {
-          this.modelId = model;
           return response;
         }
       } catch (err: any) {
         lastError = err;
         const msg = String(err?.message || '').toLowerCase();
+        const status = err?.status || err?.statusCode || 0;
         if (
+          status === 429 ||
+          msg.includes('quota') ||
+          msg.includes('rate_limit') ||
+          msg.includes('rate limit') ||
+          msg.includes('too many requests') ||
+          msg.includes('free_tier_requests') ||
           msg.includes('not found') ||
           msg.includes('404') ||
           msg.includes('not supported') ||
@@ -140,6 +151,7 @@ export class GeminiProvider implements LLMProvider {
           msg.includes('unavailable') ||
           msg.includes('resource_exhausted')
         ) {
+          // Attempt next candidate model in pool
           continue;
         }
         throw err;

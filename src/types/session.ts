@@ -20,7 +20,7 @@ export interface SessionOptions {
   maxCrossExamRounds: number;      // Default: 3
   maxRatificationCycles: number;   // Default: 2 (Initial + up to 2 revisions)
   concurrencyLimit: number;        // Default: 4 concurrent LLM requests
-  callBudget: number;              // Default: 60 total LLM calls
+  callBudget: number;              // Default: 80 total LLM calls
   sessionTimeoutMs: number;        // Default: 300_000 (5 minutes)
   mockMode: boolean;               // Default: false
 }
@@ -29,7 +29,7 @@ export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
   maxCrossExamRounds: 3,
   maxRatificationCycles: 2,
   concurrencyLimit: 4,
-  callBudget: 60,
+  callBudget: 80,
   sessionTimeoutMs: 300_000,
   mockMode: false,
 };

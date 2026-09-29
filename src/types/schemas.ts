@@ -412,7 +412,7 @@ export const SessionOptionsSchema = z.object({
   maxCrossExamRounds: z.number().int().min(1).max(5).default(3),
   maxRatificationCycles: z.number().int().min(1).max(3).default(2),
   concurrencyLimit: z.number().int().min(1).max(8).default(4),
-  callBudget: z.number().int().min(20).max(100).default(60),
+  callBudget: z.number().int().min(20).max(150).default(80),
   sessionTimeoutMs: z.number().int().min(30000).max(600000).default(300000),
   mockMode: z.boolean().default(false),
   apiKey: z.string().optional(),

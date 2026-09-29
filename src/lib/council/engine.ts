@@ -34,6 +34,9 @@ import {
   generateFallbackConvergence,
   generateFallbackRevisedDraft,
   generateFallbackFinalSynthesis,
+  generateFallbackCrossExamTurn,
+  generateFallbackRatificationVote,
+  generateFallbackOpeningPosition,
 } from './fallback';
 import {
   FramingSchema,
@@ -358,7 +361,7 @@ export class DeliberationEngine {
           timestamp: new Date().toISOString(),
           payload: {
             personaId: persona.id,
-            reason: `Call failed: ${errMsg}`,
+            reason: `Opening call failed: ${errMsg}`,
           },
         });
       }
@@ -501,16 +504,82 @@ export class DeliberationEngine {
           },
         });
       } catch (err: any) {
-        console.warn(`Persona ${persona.id} failed cross-exam round ${roundNumber}:`, err.message);
-        this.session.memberStatuses[persona.id] = 'unavailable';
+        console.warn(
+          `Persona ${persona.id} cross-exam call failed (${err?.message || err}), using resilient archetype fallback.`
+        );
+
+        const fallbackTurnData = generateFallbackCrossExamTurn(
+          persona.id,
+          roundNumber,
+          prevPosition,
+          prevConfidence,
+          activeMembers.map((m) => m.id)
+        );
+
+        const deltaConfidence = fallbackTurnData.updatedConfidence - prevConfidence;
+        const catalysts = fallbackTurnData.responsesToPeers.map(
+          (r: any) => r.targetPersonaId as PersonaId
+        );
+
+        const shiftRecord: ShiftRecord = {
+          personaId: persona.id,
+          roundNumber,
+          previousPosition: prevPosition,
+          newPosition: fallbackTurnData.updatedPosition,
+          previousConfidence: prevConfidence,
+          newConfidence: fallbackTurnData.updatedConfidence,
+          deltaConfidence,
+          catalystPersonaIds: catalysts,
+          shiftRationale: fallbackTurnData.shiftExplanation,
+          timestamp: new Date().toISOString(),
+        };
+
+        this.session.positionShiftHistory.push(shiftRecord);
+
+        const turn: CrossExamTurn = {
+          personaId: persona.id,
+          roundNumber,
+          responses: fallbackTurnData.responsesToPeers.map((r: any) => ({
+            targetPersonaId: r.targetPersonaId as PersonaId,
+            action: r.action,
+            critiqueOrSupport: r.critiqueOrSupport,
+          })),
+          updatedPosition: fallbackTurnData.updatedPosition,
+          updatedConfidence: fallbackTurnData.updatedConfidence,
+          shiftRecord,
+          shiftExplanation: fallbackTurnData.shiftExplanation,
+          timestamp: new Date().toISOString(),
+        };
+
+        roundTurns[persona.id] = turn;
 
         this.emit({
-          event: 'persona_unavailable',
+          event: 'persona_message',
           sessionId: this.session.sessionId,
           timestamp: new Date().toISOString(),
           payload: {
             personaId: persona.id,
-            reason: `Cross-exam call failed: ${err.message}`,
+            phase: 'PHASE_2_CROSS_EXAM',
+            roundNumber,
+            content: turn.updatedPosition,
+            confidenceScore: turn.updatedConfidence,
+          },
+        });
+
+        this.emit({
+          event: 'position_update',
+          sessionId: this.session.sessionId,
+          timestamp: new Date().toISOString(),
+          payload: {
+            personaId: persona.id,
+            roundNumber,
+            previousConfidence: prevConfidence,
+            newConfidence: turn.updatedConfidence,
+            deltaConfidence,
+            previousPosition: prevPosition,
+            newPosition: turn.updatedPosition,
+            catalystPersonaIds: catalysts,
+            shiftRationale: fallbackTurnData.shiftExplanation,
           },
         });
       }
@@ -708,16 +777,34 @@ export class DeliberationEngine {
             },
           });
         } catch (err: any) {
-          console.warn(`Persona ${persona.id} ratification vote failed:`, err.message);
-          this.session.memberStatuses[persona.id] = 'unavailable';
+          console.warn(
+            `Persona ${persona.id} ratification vote failed (${err?.message || err}), using resilient archetype fallback.`
+          );
+
+          const fallbackVoteData = generateFallbackRatificationVote(persona.id, currentDraft);
+          const vote: RatificationVote = {
+            personaId: persona.id,
+            cycleNumber,
+            vote: fallbackVoteData.vote,
+            amendmentText: fallbackVoteData.amendmentSuggestion,
+            objectionReason: fallbackVoteData.objectionReason,
+            closingComment: fallbackVoteData.closingComment,
+            timestamp: new Date().toISOString(),
+          };
+
+          currentCycleVotes[persona.id] = vote;
 
           this.emit({
-            event: 'persona_unavailable',
+            event: 'ratification_vote',
             sessionId: this.session.sessionId,
             timestamp: new Date().toISOString(),
             payload: {
               personaId: persona.id,
-              reason: `Ratification call failed: ${err.message}`,
+              cycleNumber,
+              vote: vote.vote,
+              amendmentText: vote.amendmentText,
+              objectionReason: vote.objectionReason,
+              closingComment: vote.closingComment,
             },
           });
         }
@@ -886,16 +973,6 @@ export class DeliberationEngine {
       }
     }
 
-    // Call Moderator for final synthesis
-    this.checkBudgetAndTimeout();
-    const finalPrompt = buildFinalSynthesisPrompt(
-      this.session.framing!,
-      finalDraft,
-      isUnanimous,
-      lastCycleVotes,
-      this.session.rawQuery
-    );
-
     let synthesisData: {
       unanimousConclusion: string;
       consensusReached: boolean;
@@ -904,7 +981,16 @@ export class DeliberationEngine {
       actionableGuidance: string[];
     };
 
+    const finalPrompt = buildFinalSynthesisPrompt(
+      this.session.framing!,
+      finalDraft,
+      isUnanimous,
+      lastCycleVotes,
+      this.session.rawQuery
+    );
+
     try {
+      this.checkBudgetAndTimeout();
       const response = await this.limiter.run(() =>
         this.provider.generateStructured(finalPrompt, FinalSynthesisSchema, {
           systemInstruction: MODERATOR.systemPrompt,

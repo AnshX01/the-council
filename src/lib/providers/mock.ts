@@ -141,7 +141,11 @@ export class MockProvider implements LLMProvider {
 
     // 3. Check for specific persona failure simulation
     for (const failedId of this.config.failedPersonaIds || []) {
-      if (prompt.includes(`[${failedId}]`) || prompt.includes(`You are The ${failedId}`) || prompt.toLowerCase().includes(`you are the ${failedId}`)) {
+      const selfRegex = new RegExp(`^You are (THE )?${failedId}\\b`, 'im');
+      const isTargetPersona =
+        (options?.systemInstruction && selfRegex.test(options.systemInstruction)) ||
+        selfRegex.test(prompt);
+      if (isTargetPersona) {
         throw new Error(`PERSONA_CALL_FAILED: Simulated timeout for persona ${failedId}`);
       }
     }

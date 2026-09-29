@@ -85,7 +85,16 @@ export class Semaphore {
 }
 
 export class ConcurrencyLimiter extends Semaphore {
+  private lastDispatchTime = 0;
+  private minIntervalMs = process.env.NODE_ENV === 'test' ? 0 : 200;
+
   async run<T>(fn: () => Promise<T>): Promise<T> {
+    const now = Date.now();
+    const elapsed = now - this.lastDispatchTime;
+    if (elapsed < this.minIntervalMs) {
+      await new Promise((resolve) => setTimeout(resolve, this.minIntervalMs - elapsed));
+    }
+    this.lastDispatchTime = Date.now();
     return this.runExclusive(fn);
   }
 }
@@ -127,9 +136,12 @@ export function isRetryableError(error: any): boolean {
   const message = String(error.message || '').toUpperCase();
   if (
     message.includes('RESOURCE_EXHAUSTED') ||
+    message.includes('QUOTA') ||
     message.includes('429') ||
     message.includes('RATE_LIMIT') ||
     message.includes('RATE LIMIT') ||
+    message.includes('TOO MANY REQUESTS') ||
+    message.includes('FREE_TIER_REQUESTS') ||
     message.includes('ETIMEDOUT') ||
     message.includes('TIMEOUT') ||
     message.includes('DEADLINE_EXCEEDED') ||
@@ -150,6 +162,25 @@ export function isRetryableError(error: any): boolean {
 }
 
 /**
+ * Extracts explicit server-specified retry delays (e.g. from Google API: "Please retry in 36.95s")
+ */
+export function extractRetryDelayMs(error: any): number | null {
+  if (!error) return null;
+  const msg = String(error.message || '');
+  const match =
+    msg.match(/retry in\s+([0-9]+(?:\.[0-9]+)?)\s*s/i) ||
+    msg.match(/retry after\s+([0-9]+(?:\.[0-9]+)?)\s*s?/i);
+  if (match && match[1]) {
+    const sec = parseFloat(match[1]);
+    if (!isNaN(sec) && sec > 0) {
+      // Add 1.5s buffer so the quota window reliably resets
+      return Math.min(45000, Math.ceil(sec * 1000) + 1500);
+    }
+  }
+  return null;
+}
+
+/**
  * Executes an async operation with exponential backoff and jitter upon retryable errors.
  */
 export async function executeWithRetry<T>(
@@ -158,7 +189,7 @@ export async function executeWithRetry<T>(
 ): Promise<T> {
   const maxRetries = options.maxRetries ?? 3;
   const baseDelayMs = options.baseDelayMs ?? 1000;
-  const maxDelayMs = options.maxDelayMs ?? 16000;
+  const maxDelayMs = options.maxDelayMs ?? 35000;
   const randomFn = options.randomFn ?? Math.random;
 
   let attempt = 0;
@@ -177,7 +208,11 @@ export async function executeWithRetry<T>(
         throw err;
       }
 
-      const sleepTime = calculateBackoffWithJitter(attempt, baseDelayMs, maxDelayMs, randomFn);
+      const explicitDelay = extractRetryDelayMs(err);
+      const sleepTime =
+        explicitDelay !== null
+          ? explicitDelay
+          : calculateBackoffWithJitter(attempt, baseDelayMs, maxDelayMs, randomFn);
 
       if (options.onRetry) {
         options.onRetry(attempt, sleepTime, err);
