@@ -11,9 +11,17 @@ export async function GET() {
   try {
     const health = await provider.healthCheck();
 
+    const hasServerApiKey = Boolean(
+      process.env.GEMINI_API_KEY &&
+      process.env.GEMINI_API_KEY.trim().length > 5 &&
+      !process.env.GEMINI_API_KEY.includes('your_gemini')
+    );
+
     return NextResponse.json({
       status: 'healthy',
       provider: provider.providerId,
+      hasServerApiKey,
+      serverModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
       providerHealth: health,
       timestamp: new Date().toISOString(),
       uptimeSeconds: process.uptime(),

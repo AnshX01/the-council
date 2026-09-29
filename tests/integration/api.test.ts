@@ -200,4 +200,22 @@ describe('API Route Handlers', () => {
       await reader!.cancel();
     });
   });
+
+  describe('POST /api/gemini/validate', () => {
+    it('rejects short or empty API key with 400', async () => {
+      const { POST: validateRoute } = await import('@/app/api/gemini/validate/route');
+      const req = new NextRequest('http://localhost:3000/api/gemini/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: 'short' }),
+      });
+
+      const response = await validateRoute(req);
+      expect(response.status).toBe(400);
+
+      const json = await response.json();
+      expect(json.ok).toBe(false);
+      expect(json.error).toContain('too short');
+    });
+  });
 });

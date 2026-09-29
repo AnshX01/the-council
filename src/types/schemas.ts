@@ -191,6 +191,9 @@ export const SessionOptionsSchema = z.object({
   callBudget: z.number().int().min(20).max(100).default(60),
   sessionTimeoutMs: z.number().int().min(30000).max(600000).default(300000),
   mockMode: z.boolean().default(false),
+  apiKey: z.string().optional(),
+  modelId: z.string().optional(),
+  mockDelayMs: z.number().optional(),
 });
 
 export const CreateSessionRequestSchema = z.object({

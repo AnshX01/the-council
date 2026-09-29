@@ -21,6 +21,7 @@ export type CouncilEventType =
   | 'done';
 
 export interface BaseSSEEvent<T extends CouncilEventType, P> {
+  id?: string;
   event: T;
   sessionId: string;
   timestamp: string;

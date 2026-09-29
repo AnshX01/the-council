@@ -158,9 +158,44 @@ export class MockProvider implements LLMProvider {
     };
   }
 
+  private extractSubject(prompt: string): string {
+    const match = prompt.match(/<deliberation_subject>([\s\S]*?)<\/deliberation_subject>/i);
+    return match ? match[1].trim() : '';
+  }
+
+  private isTheseusTopic(prompt: string): boolean {
+    const s = (this.extractSubject(prompt) || prompt).toLowerCase();
+    return (
+      s.includes('theseus') ||
+      s.includes('plank') ||
+      (s.includes('ship') && s.includes('replace')) ||
+      (s.includes('identity') && s.includes('wood'))
+    );
+  }
+
   private generateFixtureForPrompt(prompt: string): any {
     // Phase 0: Moderator Framing
     if (prompt.includes('restatedQuestion') || prompt.includes('Restate the question')) {
+      if (this.isTheseusTopic(prompt)) {
+        const framing: FramingPayload = {
+          restatedQuestion:
+            'In the Ship of Theseus paradox, does the authentic identity of an entity persist through continuous gradual material replacement and unbroken history, or does it adhere strictly to its original physical matter?',
+          coreDecisions: [
+            'Spatio-temporal continuity of structural form vs persistence of original physical matter',
+            'Resolving identity between the continuously sailed vessel and the reassembled ship of discarded planks',
+            'Determining whether identity is an intrinsic metaphysical property or a functional, conventional categorization',
+          ],
+          fundamentalAssumptions: [
+            'All original components were gradually replaced during active service',
+            'All discarded original parts were preserved and reassembled into an identical configuration',
+            'Both vessels cannot simultaneously be the singular original ship without contradiction',
+          ],
+          deliberationBounds:
+            'Focus on philosophical, structural, legal, and relational criteria for identity through change.',
+        };
+        return framing;
+      }
+
       const framing: FramingPayload = {
         restatedQuestion:
           'Should the decision-maker proceed with the proposed commitment under conditions of operational uncertainty and long-term consequences?',
@@ -213,6 +248,96 @@ export class MockProvider implements LLMProvider {
   }
 
   private generateOpeningFixture(prompt: string): OpeningPositionPayload {
+    if (this.isTheseusTopic(prompt)) {
+      if (prompt.includes('Skeptic')) {
+        return {
+          positionSummary:
+            'Identity is an unbroken operational continuum, not an occult metaphysical substance trapped inside decomposing lumber. The maintained sailing ship is the true Ship of Theseus.',
+          detailedReasoning:
+            'Material reductionism leads to absurdity: if physical constituent matter dictated identity, every living human ceases to be themselves after seven years of cellular turnover. The unbroken causal and functional trajectory of the sailing ship is empirically verifiable.',
+          confidenceScore: 40,
+          falsificationCondition:
+            'Empirical proof that physical matter possesses an intrinsic, non-relational property of identity that survives dissolution and disuse.',
+        };
+      }
+      if (prompt.includes('Optimist')) {
+        return {
+          positionSummary:
+            'A ship is defined by its ongoing mission and living purpose on the water; the vessel that continues sailing carries the authentic living heritage of Theseus.',
+          detailedReasoning:
+            'Active seaworthiness and voyage represent the generative essence of a ship. Maintenance is an act of renewal and preservation, not erasure. The reassembled parts are merely a museum relic.',
+          confidenceScore: 85,
+          falsificationCondition:
+            'Demonstration that an inert collection of timber provides more functional and symbolic continuity than the active vessel.',
+        };
+      }
+      if (prompt.includes('Ethicist')) {
+        return {
+          positionSummary:
+            'Identity is a relational covenant forged with the crew, harbor, and passengers who trusted their lives to the sailing vessel across generations.',
+          detailedReasoning:
+            'A ship ethical standing derives from its social contract and shared history with people. Discarded wood holds no moral or operational responsibility to any voyager.',
+          confidenceScore: 70,
+          falsificationCondition:
+            'Evidence that an ethical covenant adheres to inanimate raw material rather than active social and relational commitment.',
+        };
+      }
+      if (prompt.includes('Pragmatist')) {
+        return {
+          positionSummary:
+            'Maritime law, port registries, and continuous navigation logs identify the sailing ship as the authentic vessel; the second ship is a historical reconstruction.',
+          detailedReasoning:
+            'In the real world, property, contracts, insurance, and navigation depend on unbroken administrative and physical continuity. The sailed ship never ceased operation.',
+          confidenceScore: 75,
+          falsificationCondition:
+            'A legal or maritime precedent in which a decommissioned reassembled vessel displaced an actively registered sailing vessel.',
+        };
+      }
+      if (prompt.includes('Systems Thinker')) {
+        return {
+          positionSummary:
+            'Like a living organism continuously metabolizing new cells, a system identity resides in its relational pattern and continuous feedback loops, not transient atoms.',
+          detailedReasoning:
+            'A system is an organization of energy, structure, and functional relations. When matter flows through a stable attractor state, the system preserves unbroken identity through change.',
+          confidenceScore: 65,
+          falsificationCondition:
+            'Mathematical proof that system dynamics collapse if constituent material units are replaced incrementally.',
+        };
+      }
+      if (prompt.includes('Historian')) {
+        return {
+          positionSummary:
+            'Historical precedent consistently privileges continuous institutional identity over inert material relics; ancient cathedrals undergo total renewal while remaining identical.',
+          detailedReasoning:
+            'From ancient Shinto shrines rebuilt every 20 years to medieval stone monuments, human history universally recognizes continuity of lineage over raw constitutive elements.',
+          confidenceScore: 80,
+          falsificationCondition:
+            'Historical cases where an entity lineage was transferred to inert scrap rather than the continuous active institution.',
+        };
+      }
+      if (prompt.includes('Humanist')) {
+        return {
+          positionSummary:
+            'A ship soul is forged from the human tears, songs, voyages, and camaraderie sustained on its decks; those memories traveled with the ship that sailed.',
+          detailedReasoning:
+            'Objects matter because of the human experience imbued within them. The continuity of human journey across the sea preserves the identity of Theseus ship.',
+          confidenceScore: 70,
+          falsificationCondition:
+            'Evidence that human meaning and lived memory detach from continuous experience and bond to rotting wood in storage.',
+        };
+      }
+      // Contrarian
+      return {
+        positionSummary:
+          'The paradox exposes that identity is not a physical property at all, but a mental categorization. Both ships have distinct legitimate claims: one to material continuity, one to operational continuity.',
+        detailedReasoning:
+          'Denying the claim of the original material planks is an arbitrary evasion; yet denying the sailed ship is equally absurd. Genuine resolution requires recognizing dual dimensions of identity.',
+        confidenceScore: 45,
+        falsificationCondition:
+          'A rigorous formal ontology that definitively proves single-substance essentialism without arbitrary linguistic fiat.',
+      };
+    }
+
     if (prompt.includes('Skeptic')) {
       return {
         positionSummary:
@@ -305,14 +430,18 @@ export class MockProvider implements LLMProvider {
   private generateCrossExamFixture(prompt: string): CrossExamTurnPayload {
     const isContrarian = prompt.includes('Contrarian');
     const isSkeptic = prompt.includes('Skeptic');
+    const isTheseus = this.isTheseusTopic(prompt);
 
-    let updatedPos =
-      'Refining stance: adopting a staged rollout with explicit kill-switches balances risk with strategic potential.';
+    let updatedPos = isTheseus
+      ? 'Refining stance: adopting continuous functional and narrative identity over material reductionism resolves the paradox while honoring both vessels.'
+      : 'Refining stance: adopting a staged rollout with explicit kill-switches balances risk with strategic potential.';
     let confidence = 75;
-    let shiftExp =
-      'Incorporated the Pragmatist operational roadmap and the Ethicist safeguards, increasing confidence.';
-    let whatChanged =
-      'Shifted from initial skepticism to cautious support due to structured milestone gating.';
+    let shiftExp = isTheseus
+      ? 'Incorporated the Pragmatist operational roadmap and the Ethicist safeguards, increasing confidence.'
+      : 'Incorporated the Pragmatist operational roadmap and the Ethicist safeguards, increasing confidence.';
+    let whatChanged = isTheseus
+      ? 'Shifted from initial skepticism to cautious support due to structured milestone gating.'
+      : 'Shifted from initial skepticism to cautious support due to structured milestone gating.';
 
     if (this.config.scenario === 'DEADLOCK_HONEST_FAILURE' && (isContrarian || isSkeptic)) {
       updatedPos =
@@ -329,14 +458,16 @@ export class MockProvider implements LLMProvider {
         {
           targetPersonaId: isSkeptic ? 'optimist' : 'skeptic',
           action: 'CHALLENGE',
-          critiqueOrSupport:
-            'Your assumptions depend on unverified positive momentum without factoring in downside volatility.',
+          critiqueOrSupport: isTheseus
+            ? 'Your view risks collapsing identity into mere nostalgia without accounting for unbroken physical form.'
+            : 'Your assumptions depend on unverified positive momentum without factoring in downside volatility.',
         },
         {
           targetPersonaId: 'pragmatist',
           action: 'AGREE',
-          critiqueOrSupport:
-            'Your phased milestone gating provides the exact operational discipline required to proceed safely.',
+          critiqueOrSupport: isTheseus
+            ? 'Your operational and historical framing establishes the crucial legal and functional continuity needed for consensus.'
+            : 'Your phased milestone gating provides the exact operational discipline required to proceed safely.',
         },
       ],
       updatedPosition: updatedPos,
@@ -348,6 +479,24 @@ export class MockProvider implements LLMProvider {
 
   private generateConvergenceFixture(prompt: string): ConvergenceCheckPayload {
     const isDeadlock = this.config.scenario === 'DEADLOCK_HONEST_FAILURE';
+    const isTheseus = this.isTheseusTopic(prompt);
+
+    if (isTheseus) {
+      return {
+        draftConsensusStatement:
+          'The Council converges on recognizing that identity adheres to continuous functional form, unbroken operational history, and systemic organization rather than physical constituent matter.',
+        remainingDisagreements: isDeadlock
+          ? ['Persistent unresolvable objection regarding irreversible systemic risk from The Contrarian']
+          : ['Minor taxonomic nuances regarding the formal title of the reassembled secondary vessel'],
+        convergenceScore: isDeadlock ? 55 : 91,
+        keyAlignmentPoints: [
+          'Identity is defined by continuous systemic organization and navigational lineage rather than static atomic material',
+          'The maintained sailing vessel is recognized as the continuous Ship of Theseus',
+          'The reassembled ship of discarded planks is formally recognized as an authentic historical material reconstruction',
+        ],
+      };
+    }
+
     return {
       draftConsensusStatement:
         'The Council converges on a phased, milestone-gated deployment with strict operational guardrails, explicit ethical protections, and an active fallback kill-switch.',
@@ -404,6 +553,7 @@ export class MockProvider implements LLMProvider {
 
   private generateFinalSynthesisFixture(prompt: string): FinalSynthesisPayload {
     const isDeadlock = this.config.scenario === 'DEADLOCK_HONEST_FAILURE';
+    const isTheseus = this.isTheseusTopic(prompt);
 
     if (isDeadlock) {
       return {
@@ -421,6 +571,28 @@ export class MockProvider implements LLMProvider {
           '1. Acknowledge and document the unresolved risk highlighted by the dissent',
           '2. If proceeding under majority advice, implement twice the standard reserve buffer',
           '3. Treat the Contrarian objection criteria as hard triggers for emergency pause',
+        ],
+      };
+    }
+
+    if (isTheseus) {
+      return {
+        unanimousConclusion:
+          'The Council unanimously recommends recognizing the continuously maintained sailing ship as the authentic Ship of Theseus. Identity is grounded in continuous form, unbroken historical purpose, and systemic organization rather than static physical matter; the reassembled original planks constitute a distinct historical reconstruction.',
+        consensusReached: true,
+        keyReasons: [
+          'Dynamic systems theory establishes that identity resides in relational pattern and continuous operational lineage, analogous to cellular replacement in living organisms',
+          'Maritime convention, historical precedent, and legal registries consistently affirm that continuity of commission and voyage preserves institutional identity',
+          'Ethical and humanist covenants recognize the vessel that sheltered crew and passengers across unbroken journeys, not inanimate discarded timber',
+        ],
+        mainCaveats: [
+          'Acknowledge the legitimate historical value of the reassembled original planks as an authentic material relic',
+          'Clarify that "identity" is a functional and narrative concept rather than an immutable physical substance',
+        ],
+        actionableGuidance: [
+          '1. Affirm the sailing vessel as the continuing Ship of Theseus in all maritime and historical registries',
+          '2. Curate the reassembled second ship with honors as the "Theseus Material Reconstruction"',
+          '3. Apply this unanimous principle to modern dilemmas: continuous structural integrity and mission continuity supersede transient constituent parts',
         ],
       };
     }

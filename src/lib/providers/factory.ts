@@ -14,6 +14,7 @@ export interface ProviderFactoryOptions {
   mockScenario?: MockScenario;
   apiKey?: string;
   modelId?: string;
+  mockDelayMs?: number;
 }
 
 let singletonProvider: LLMProvider | null = null;
@@ -24,24 +25,30 @@ export function getLLMProvider(options: ProviderFactoryOptions = {}): LLMProvide
     process.env.USE_MOCK_PROVIDER === 'true' ||
     process.env.NODE_ENV === 'test';
 
-  const hasApiKey = Boolean(options.apiKey || process.env.GEMINI_API_KEY);
+  const rawKey = options.apiKey || process.env.GEMINI_API_KEY;
+  const hasApiKey = Boolean(rawKey && rawKey.trim().length > 5 && !rawKey.includes('your_gemini'));
 
   // Return MockProvider if forced, in test mode, or if no API key is configured
   if (isMockRequested || !hasApiKey) {
+    const defaultDelay = process.env.NODE_ENV === 'test' ? 0 : 750;
+    const delayMs = options.mockDelayMs !== undefined ? options.mockDelayMs : defaultDelay;
+
     return new MockProvider({
       scenario: options.mockScenario || 'UNANIMOUS_CONSENSUS',
+      delayMs,
     });
   }
 
   // Otherwise return real GeminiProvider
   try {
-    return new GeminiProvider(options.apiKey, options.modelId);
+    return new GeminiProvider(rawKey?.trim(), options.modelId);
   } catch (err) {
     console.warn(
       'Failed to initialize GeminiProvider; falling back to MockProvider:',
       err
     );
-    return new MockProvider();
+    const defaultDelay = process.env.NODE_ENV === 'test' ? 0 : 750;
+    return new MockProvider({ delayMs: defaultDelay });
   }
 }
 

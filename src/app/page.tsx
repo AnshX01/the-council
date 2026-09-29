@@ -1,12 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles, ArrowRight, Shield, Scale, Lightbulb, Users, Compass, ExternalLink } from 'lucide-react';
+import { Sparkles, ArrowRight, Shield, Scale, Lightbulb, Users, Compass, ExternalLink, Key, AlertTriangle, CheckCircle } from 'lucide-react';
 import { COUNCIL_MEMBERS, PersonaProfile } from '@/lib/council/personas';
 import { PersonaDetailModal } from '@/components/PersonaDetailModal';
+import { ApiKeyModal } from '@/components/ApiKeyModal';
 
 const EXAMPLE_PROMPTS = [
+  {
+    label: 'Ship of Theseus',
+    text: 'Over many years, every wooden plank of a ship is gradually replaced until no original part remains. If the discarded planks are reassembled into a second vessel, which ship is the real Ship of Theseus: physical material or continuous form?',
+  },
   {
     label: 'Career vs. Family',
     text: 'Should a career professional in their 40s pivot entirely from stable corporate management to a high-paying executive job that requires relocate and 80h weeks away from young family?',
@@ -34,7 +39,30 @@ export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPersona, setSelectedPersona] = useState<PersonaProfile | null>(null);
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [hasKey, setHasKey] = useState(false);
+  const [engineModel, setEngineModel] = useState('gemini-2.5-flash');
   const router = useRouter();
+
+  useEffect(() => {
+    const storedKey = typeof window !== 'undefined' ? localStorage.getItem('the_council_gemini_api_key') : null;
+    const storedModel = typeof window !== 'undefined' ? localStorage.getItem('the_council_gemini_model') : null;
+    if (storedModel) setEngineModel(storedModel);
+
+    fetch('/api/health')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.hasServerApiKey || (storedKey && storedKey.length > 5)) {
+          setHasKey(true);
+          if (data.serverModel && !storedModel) setEngineModel(data.serverModel);
+        } else {
+          setHasKey(false);
+        }
+      })
+      .catch(() => {
+        if (storedKey && storedKey.length > 5) setHasKey(true);
+      });
+  }, [isKeyModalOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,10 +75,28 @@ export default function LandingPage() {
     setError(null);
 
     try {
+      let apiKey: string | undefined;
+      let modelId: string | undefined;
+
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('the_council_gemini_api_key');
+        if (stored && stored.trim().length > 5) {
+          apiKey = stored.trim();
+        }
+        const m = localStorage.getItem('the_council_gemini_model');
+        if (m) modelId = m;
+      }
+
       const res = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim() }),
+        body: JSON.stringify({
+          query: query.trim(),
+          options: {
+            apiKey,
+            modelId,
+          },
+        }),
       });
 
       if (!res.ok) {
@@ -135,6 +181,31 @@ export default function LandingPage() {
             </div>
           </div>
         </form>
+
+        {/* Engine Status Banner */}
+        <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs px-3.5 py-2 rounded-xl border border-gray-200/80 dark:border-gray-800 bg-white/60 dark:bg-gray-900/40 shadow-xs">
+          <div className="flex items-center gap-2">
+            {hasKey ? (
+              <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span>Live Gemini Engine ({engineModel})</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Simulation Mode (Gemini key not set)</span>
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsKeyModalOpen(true)}
+            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 self-start sm:self-auto"
+          >
+            <Key className="w-3.5 h-3.5" />
+            <span>{hasKey ? 'Engine Settings' : 'Enter Gemini API Key'}</span>
+          </button>
+        </div>
 
         {error && (
           <p className="mt-2.5 text-xs text-red-600 dark:text-red-400 text-center font-medium">
@@ -245,6 +316,13 @@ export default function LandingPage() {
           onClose={() => setSelectedPersona(null)}
         />
       )}
+
+      {/* Gemini Engine Settings Modal */}
+      <ApiKeyModal
+        isOpen={isKeyModalOpen}
+        onClose={() => setIsKeyModalOpen(false)}
+        onSave={() => setIsKeyModalOpen(false)}
+      />
     </div>
   );
 }

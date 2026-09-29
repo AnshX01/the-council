@@ -27,6 +27,9 @@ export async function POST(req: NextRequest) {
     // Resolve provider (MockProvider or GeminiProvider)
     const provider = getLLMProvider({
       forceMock: options?.mockMode,
+      apiKey: options?.apiKey,
+      modelId: options?.modelId,
+      mockDelayMs: options?.mockDelayMs,
     });
 
     const engine = new DeliberationEngine(query, options, provider);

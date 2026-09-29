@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useState, useRef, use } from 'react';
 import Link from 'next/link';
 import { CouncilSSEEvent } from '@/types/events';
 import {
@@ -35,6 +35,9 @@ export default function SessionPage({
   const [currentSpeaker, setCurrentSpeaker] = useState<PersonaId | undefined>();
   const [selectedPersona, setSelectedPersona] = useState<PersonaProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const sessionRef = useRef<DeliberationSession | null>(null);
+  sessionRef.current = session;
 
   // 1. Initial Snapshot Fetch
   useEffect(() => {
@@ -56,7 +59,21 @@ export default function SessionPage({
         const data = await res.json();
         if (!isCancelled) {
           setSession(data.session);
-          setEvents(data.events || []);
+          setEvents((prev) => {
+            const initialList: CouncilSSEEvent[] = data.events || [];
+            const merged = [...prev];
+            for (const item of initialList) {
+              const exists = merged.some(
+                (m) =>
+                  (item.id && m.id === item.id) ||
+                  (m.timestamp === item.timestamp &&
+                    m.event === item.event &&
+                    JSON.stringify(m.payload) === JSON.stringify(item.payload))
+              );
+              if (!exists) merged.push(item);
+            }
+            return merged;
+          });
         }
       } catch (err: any) {
         if (!isCancelled) setError(err.message);
@@ -74,18 +91,24 @@ export default function SessionPage({
   useEffect(() => {
     if (!sessionId) return;
 
-    let eventSource: EventSource | null = null;
     let isCancelled = false;
 
     function connectSSE() {
-      eventSource = new EventSource(`/api/sessions/${sessionId}/stream`);
+      const eventSource = new EventSource(`/api/sessions/${sessionId}/stream`);
+      eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
         if (!isCancelled) setIsConnected(true);
       };
 
       eventSource.onerror = () => {
-        if (!isCancelled) setIsConnected(false);
+        if (!isCancelled) {
+          setIsConnected(false);
+          // If session is already concluded, close to avoid browser reconnect retry loop
+          if (sessionRef.current?.finalVerdict || sessionRef.current?.currentPhase === 'PHASE_5_FINAL_OUTPUT') {
+            eventSource.close();
+          }
+        }
       };
 
       // Listen for all council events
@@ -119,17 +142,34 @@ export default function SessionPage({
 
     return () => {
       isCancelled = true;
-      if (eventSource) {
-        eventSource.close();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
     };
   }, [sessionId]);
 
   // Reactive state updates from incoming SSE events
   const handleIncomingEvent = (event: CouncilSSEEvent) => {
-    setEvents((prev) => [...prev, event]);
+    setEvents((prev) => {
+      const exists = prev.some(
+        (e) =>
+          (event.id && e.id === event.id) ||
+          (e.timestamp === event.timestamp &&
+            e.event === event.event &&
+            JSON.stringify(e.payload) === JSON.stringify(event.payload))
+      );
+      if (exists) return prev;
+      return [...prev, event];
+    });
 
-    if (event.event === 'phase_started') {
+    if (event.event === 'done') {
+      setIsConnected(false);
+      // Close EventSource immediately to prevent browser reconnection loop
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    } else if (event.event === 'phase_started') {
       setSession((prev) =>
         prev
           ? {
@@ -170,15 +210,23 @@ export default function SessionPage({
             }
           : null
       );
+      setIsConnected(false);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
     } else if (event.event === 'session_error') {
       setError(event.payload.message);
+      setIsConnected(false);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
     }
   };
 
   // Extract accumulated artifacts from events
   const getAccumulatedState = () => {
     const openings: Partial<Record<PersonaId, OpeningPosition>> =
-      session?.openingPositions || {};
+      session?.openingPositions ? { ...session.openingPositions } : {};
     const rounds: CrossExamRound[] = session?.crossExamRounds ? [...session.crossExamRounds] : [];
     const drafts: ConvergenceDraft[] = session?.convergenceDrafts ? [...session.convergenceDrafts] : [];
     const votes: Partial<Record<PersonaId, RatificationVote>> = {};
@@ -188,16 +236,19 @@ export default function SessionPage({
     for (const evt of events) {
       if (evt.event === 'moderator_draft') {
         latestScore = evt.payload.alignmentScore;
-        drafts.push({
-          roundNumber: evt.payload.draftRound,
-          draftConsensusText: evt.payload.draftConsensusText,
-          coreAgreements: evt.payload.keyAlignmentPoints || [],
-          remainingDisagreements: evt.payload.remainingDisagreements,
-          alignmentScore: evt.payload.alignmentScore,
-          varianceScore: evt.payload.varianceScore,
-          memberAgreementScores: {},
-          timestamp: evt.timestamp,
-        });
+        const exists = drafts.some((d) => d.roundNumber === evt.payload.draftRound);
+        if (!exists) {
+          drafts.push({
+            roundNumber: evt.payload.draftRound,
+            draftConsensusText: evt.payload.draftConsensusText,
+            coreAgreements: evt.payload.keyAlignmentPoints || [],
+            remainingDisagreements: evt.payload.remainingDisagreements,
+            alignmentScore: evt.payload.alignmentScore,
+            varianceScore: evt.payload.varianceScore,
+            memberAgreementScores: {},
+            timestamp: evt.timestamp,
+          });
+        }
       } else if (evt.event === 'ratification_vote') {
         votes[evt.payload.personaId] = {
           personaId: evt.payload.personaId,
@@ -209,18 +260,25 @@ export default function SessionPage({
           timestamp: evt.timestamp,
         };
       } else if (evt.event === 'position_update') {
-        shifts.push({
-          personaId: evt.payload.personaId,
-          roundNumber: evt.payload.roundNumber,
-          previousPosition: evt.payload.previousPosition,
-          newPosition: evt.payload.newPosition,
-          previousConfidence: evt.payload.previousConfidence,
-          newConfidence: evt.payload.newConfidence,
-          deltaConfidence: evt.payload.deltaConfidence,
-          catalystPersonaIds: evt.payload.catalystPersonaIds,
-          shiftRationale: evt.payload.shiftRationale,
-          timestamp: evt.timestamp,
-        });
+        const exists = shifts.some(
+          (s) =>
+            s.personaId === evt.payload.personaId &&
+            s.roundNumber === evt.payload.roundNumber
+        );
+        if (!exists) {
+          shifts.push({
+            personaId: evt.payload.personaId,
+            roundNumber: evt.payload.roundNumber,
+            previousPosition: evt.payload.previousPosition,
+            newPosition: evt.payload.newPosition,
+            previousConfidence: evt.payload.previousConfidence,
+            newConfidence: evt.payload.newConfidence,
+            deltaConfidence: evt.payload.deltaConfidence,
+            catalystPersonaIds: evt.payload.catalystPersonaIds,
+            shiftRationale: evt.payload.shiftRationale,
+            timestamp: evt.timestamp,
+          });
+        }
       }
     }
 

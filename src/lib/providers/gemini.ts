@@ -43,25 +43,73 @@ export class GeminiProvider implements LLMProvider {
 
   async healthCheck(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
     const start = Date.now();
-    try {
-      const response = await this.client.models.generateContent({
-        model: this.modelId,
-        contents: 'ping',
-        config: {
-          maxOutputTokens: 5,
-          temperature: 0.1,
-        },
-      });
-      const latencyMs = Date.now() - start;
-      const text = response?.text;
-      return { ok: Boolean(text), latencyMs };
-    } catch (err: any) {
-      return {
-        ok: false,
-        latencyMs: Date.now() - start,
-        error: err?.message || 'Gemini healthcheck failed',
-      };
+    const candidateModels = Array.from(
+      new Set([this.modelId, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'])
+    );
+
+    let lastError = '';
+    for (const model of candidateModels) {
+      try {
+        const response = await this.client.models.generateContent({
+          model,
+          contents: 'ping',
+          config: {
+            maxOutputTokens: 5,
+            temperature: 0.1,
+          },
+        });
+        const text = response?.text;
+        if (text !== undefined) {
+          this.modelId = model;
+          return { ok: true, latencyMs: Date.now() - start };
+        }
+      } catch (err: any) {
+        lastError = err?.message || 'Gemini healthcheck failed';
+      }
     }
+
+    return {
+      ok: false,
+      latencyMs: Date.now() - start,
+      error: lastError,
+    };
+  }
+
+  private async callGeminiWithFallback(params: {
+    contents: any;
+    config: any;
+  }): Promise<any> {
+    const candidateModels = Array.from(
+      new Set([this.modelId, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'])
+    );
+
+    let lastError: any = null;
+    for (const model of candidateModels) {
+      try {
+        const response = await this.client.models.generateContent({
+          model,
+          contents: params.contents,
+          config: params.config,
+        });
+        if (response) {
+          this.modelId = model;
+          return response;
+        }
+      } catch (err: any) {
+        lastError = err;
+        const msg = String(err?.message || '').toLowerCase();
+        if (
+          msg.includes('not found') ||
+          msg.includes('404') ||
+          msg.includes('not supported') ||
+          msg.includes('unsupported')
+        ) {
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastError || new Error(`No Gemini model succeeded from: ${candidateModels.join(', ')}`);
   }
 
   async generateText(
@@ -76,8 +124,7 @@ export class GeminiProvider implements LLMProvider {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const response = await this.client.models.generateContent({
-          model: this.modelId,
+        const response = await this.callGeminiWithFallback({
           contents: prompt,
           config: {
             systemInstruction: options?.systemInstruction,
@@ -121,8 +168,7 @@ export class GeminiProvider implements LLMProvider {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const response = await this.client.models.generateContent({
-          model: this.modelId,
+        const response = await this.callGeminiWithFallback({
           contents: prompt,
           config: {
             systemInstruction: options?.systemInstruction,
@@ -179,8 +225,7 @@ export class GeminiProvider implements LLMProvider {
   ): Promise<ProviderResponse<T>> {
     const repairPrompt = buildRepairPrompt(malformedOutput, errorMessage);
 
-    const repairResponse = await this.client.models.generateContent({
-      model: this.modelId,
+    const repairResponse = await this.callGeminiWithFallback({
       contents: repairPrompt,
       config: {
         responseMimeType: 'application/json',

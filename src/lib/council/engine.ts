@@ -131,7 +131,13 @@ export class DeliberationEngine {
     this.eventListeners = this.eventListeners.filter((l) => l !== listener);
   }
 
+  private eventSequence = 0;
+
   private emit(event: CouncilSSEEvent): void {
+    if (!event.id) {
+      this.eventSequence++;
+      event.id = `${this.session.sessionId}-evt-${this.eventSequence}`;
+    }
     this.session.updatedAt = new Date().toISOString();
     for (const listener of this.eventListeners) {
       try {
