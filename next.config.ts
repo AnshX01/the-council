@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Ensure server-only packages are not bundled into the client
+  outputFileTracingRoot: path.resolve(__dirname),
   serverExternalPackages: ["@google/genai"],
 };
 

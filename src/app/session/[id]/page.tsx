@@ -40,10 +40,16 @@ export default function SessionPage({
   useEffect(() => {
     let isCancelled = false;
 
-    async function fetchInitialSnapshot() {
+    async function fetchInitialSnapshot(retries = 3) {
       try {
         const res = await fetch(`/api/sessions/${sessionId}`);
         if (!res.ok) {
+          if (res.status === 404 && retries > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            if (!isCancelled) {
+              return fetchInitialSnapshot(retries - 1);
+            }
+          }
           if (res.status === 404) throw new Error('Deliberation session not found.');
           throw new Error('Failed to load session details.');
         }

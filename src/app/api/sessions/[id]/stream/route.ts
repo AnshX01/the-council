@@ -10,7 +10,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = sessionStore.getSession(id);
+  let session = sessionStore.getSession(id);
+  if (!session) {
+    for (let i = 0; i < 3 && !session; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      session = sessionStore.getSession(id);
+    }
+  }
 
   if (!session) {
     return new Response(
