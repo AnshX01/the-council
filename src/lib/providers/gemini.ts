@@ -24,7 +24,7 @@ export class GeminiProvider implements LLMProvider {
   private modelId: string;
   private perCallTimeoutMs: number;
 
-  constructor(apiKey?: string, modelId?: string, perCallTimeoutMs = 45000) {
+  constructor(apiKey?: string, modelId?: string, perCallTimeoutMs = 60000) {
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) {
       throw new Error(
@@ -33,7 +33,7 @@ export class GeminiProvider implements LLMProvider {
     }
 
     this.client = new GoogleGenAI({ apiKey: key });
-    this.modelId = modelId || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    this.modelId = modelId || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
     this.perCallTimeoutMs = perCallTimeoutMs;
   }
 
@@ -41,10 +41,34 @@ export class GeminiProvider implements LLMProvider {
     return this.modelId;
   }
 
+  private extractCleanErrorMessage(err: any): string {
+    if (!err) return 'Gemini request failed';
+    const raw = typeof err === 'string' ? err : err.message || JSON.stringify(err);
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*"error"[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.error?.message) {
+          return parsed.error.message;
+        }
+      }
+    } catch {
+      // fallback to raw
+    }
+    return raw;
+  }
+
   async healthCheck(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
     const start = Date.now();
     const candidateModels = Array.from(
-      new Set([this.modelId, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'])
+      new Set([
+        this.modelId,
+        'gemini-3.5-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-3.8-flash',
+        'gemini-flash-latest',
+      ])
     );
 
     let lastError = '';
@@ -64,7 +88,7 @@ export class GeminiProvider implements LLMProvider {
           return { ok: true, latencyMs: Date.now() - start };
         }
       } catch (err: any) {
-        lastError = err?.message || 'Gemini healthcheck failed';
+        lastError = this.extractCleanErrorMessage(err);
       }
     }
 
@@ -80,7 +104,14 @@ export class GeminiProvider implements LLMProvider {
     config: any;
   }): Promise<any> {
     const candidateModels = Array.from(
-      new Set([this.modelId, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'])
+      new Set([
+        this.modelId,
+        'gemini-3.5-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-3.8-flash',
+        'gemini-flash-latest',
+      ])
     );
 
     let lastError: any = null;
@@ -102,14 +133,20 @@ export class GeminiProvider implements LLMProvider {
           msg.includes('not found') ||
           msg.includes('404') ||
           msg.includes('not supported') ||
-          msg.includes('unsupported')
+          msg.includes('unsupported') ||
+          msg.includes('no longer available') ||
+          msg.includes('experiencing high demand') ||
+          msg.includes('503') ||
+          msg.includes('unavailable') ||
+          msg.includes('resource_exhausted')
         ) {
           continue;
         }
         throw err;
       }
     }
-    throw lastError || new Error(`No Gemini model succeeded from: ${candidateModels.join(', ')}`);
+    const cleanMsg = this.extractCleanErrorMessage(lastError);
+    throw new Error(cleanMsg || `No Gemini model succeeded from: ${candidateModels.join(', ')}`);
   }
 
   async generateText(

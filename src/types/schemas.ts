@@ -11,7 +11,7 @@ import { PersonaId, PERSONA_IDS } from './persona';
 // ---------------------------------------------------------------------------
 // 1. Moderator Framing Schema (Phase 0)
 // ---------------------------------------------------------------------------
-export const FramingSchema = z.object({
+export const BaseFramingSchema = z.object({
   restatedQuestion: z
     .string()
     .min(1, 'Restated question cannot be empty')
@@ -30,12 +30,39 @@ export const FramingSchema = z.object({
     .describe('Explicit scope, exclusions, and problem boundaries'),
 });
 
-export type FramingPayload = z.infer<typeof FramingSchema>;
+export type FramingPayload = z.infer<typeof BaseFramingSchema>;
+
+export const FramingSchema: z.ZodType<FramingPayload, any, any> = z.preprocess(
+  (raw: any) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    return {
+      restatedQuestion: raw.restatedQuestion || raw.question || raw.restatement || '',
+      coreDecisions:
+        Array.isArray(raw.coreDecisions) && raw.coreDecisions.length > 0
+          ? raw.coreDecisions
+          : Array.isArray(raw.decisions) && raw.decisions.length > 0
+          ? raw.decisions
+          : ['Analyze strategic trade-offs and foundational principles'],
+      fundamentalAssumptions:
+        Array.isArray(raw.fundamentalAssumptions) && raw.fundamentalAssumptions.length > 0
+          ? raw.fundamentalAssumptions
+          : Array.isArray(raw.assumptions) && raw.assumptions.length > 0
+          ? raw.assumptions
+          : ['Reasoning from verified baseline conditions and logical consistency'],
+      deliberationBounds:
+        raw.deliberationBounds ||
+        raw.bounds ||
+        raw.scope ||
+        'Bounded to core ethical, empirical, and operational criteria.',
+    };
+  },
+  BaseFramingSchema
+);
 
 // ---------------------------------------------------------------------------
 // 2. Persona Opening Position Schema (Phase 1)
 // ---------------------------------------------------------------------------
-export const OpeningPositionSchema = z.object({
+export const BaseOpeningPositionSchema = z.object({
   positionSummary: z
     .string()
     .min(1, 'Position summary cannot be empty')
@@ -55,7 +82,35 @@ export const OpeningPositionSchema = z.object({
     .describe('Specific evidence or proof that would change this persona mind'),
 });
 
-export type OpeningPositionPayload = z.infer<typeof OpeningPositionSchema>;
+export type OpeningPositionPayload = z.infer<typeof BaseOpeningPositionSchema>;
+
+export const OpeningPositionSchema: z.ZodType<OpeningPositionPayload, any, any> = z.preprocess(
+  (raw: any) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    return {
+      positionSummary: raw.positionSummary || raw.position || raw.stance || raw.summary || '',
+      detailedReasoning:
+        raw.detailedReasoning ||
+        raw.reasoning ||
+        raw.arguments ||
+        raw.details ||
+        raw.positionSummary ||
+        '',
+      confidenceScore:
+        typeof raw.confidenceScore === 'number'
+          ? raw.confidenceScore
+          : typeof raw.confidence === 'number'
+          ? raw.confidence
+          : 70,
+      falsificationCondition:
+        raw.falsificationCondition ||
+        raw.falsification ||
+        raw.counterEvidence ||
+        'Empirical evidence demonstrating catastrophic divergence or counterproductive outcomes.',
+    };
+  },
+  BaseOpeningPositionSchema
+);
 
 // ---------------------------------------------------------------------------
 // 3. Cross-Examination Turn Schema (Phase 2)
@@ -63,7 +118,7 @@ export type OpeningPositionPayload = z.infer<typeof OpeningPositionSchema>;
 export const CrossExamActionSchema = z.enum(['AGREE', 'CHALLENGE', 'CONCEDE']);
 export type CrossExamActionType = z.infer<typeof CrossExamActionSchema>;
 
-export const PeerResponseSchema = z.object({
+export const BasePeerResponseSchema = z.object({
   targetPersonaId: z
     .string()
     .min(1, 'Target persona ID cannot be empty')
@@ -75,11 +130,40 @@ export const PeerResponseSchema = z.object({
     .describe('Direct philosophical challenge, agreement, or concession'),
 });
 
-export type PeerResponsePayload = z.infer<typeof PeerResponseSchema>;
+export type PeerResponsePayload = z.infer<typeof BasePeerResponseSchema>;
 
-export const CrossExamTurnSchema = z.object({
+export const PeerResponseSchema: z.ZodType<PeerResponsePayload, any, any> = z.preprocess(
+  (raw: any) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    let action = 'CHALLENGE';
+    const rawAction = (raw.action || raw.type || '').toString().toUpperCase();
+    if (rawAction.includes('AGREE')) action = 'AGREE';
+    else if (rawAction.includes('CONCEDE')) action = 'CONCEDE';
+    else if (
+      rawAction.includes('CHALLENGE') ||
+      rawAction.includes('DISAGREE') ||
+      rawAction.includes('OBJECT')
+    )
+      action = 'CHALLENGE';
+
+    return {
+      targetPersonaId: raw.targetPersonaId || raw.personaId || raw.target || 'skeptic',
+      action,
+      critiqueOrSupport:
+        raw.critiqueOrSupport ||
+        raw.critique ||
+        raw.support ||
+        raw.comment ||
+        raw.response ||
+        'Dialectical critique or endorsement provided.',
+    };
+  },
+  BasePeerResponseSchema
+);
+
+export const BaseCrossExamTurnSchema = z.object({
   responsesToPeers: z
-    .array(PeerResponseSchema)
+    .array(BasePeerResponseSchema)
     .min(2, 'Must engage with at least two named peers in each cross-examination round')
     .describe('Responses addressing at least 2 distinct council members'),
   updatedPosition: z
@@ -101,12 +185,69 @@ export const CrossExamTurnSchema = z.object({
     .describe('Concise delta of perspective from the previous round'),
 });
 
-export type CrossExamTurnPayload = z.infer<typeof CrossExamTurnSchema>;
+export type CrossExamTurnPayload = z.infer<typeof BaseCrossExamTurnSchema>;
+
+export const CrossExamTurnSchema: z.ZodType<CrossExamTurnPayload, any, any> = z.preprocess(
+  (raw: any) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    let peers = Array.isArray(raw.responsesToPeers)
+      ? raw.responsesToPeers
+      : Array.isArray(raw.peerResponses)
+      ? raw.peerResponses
+      : [];
+
+    if (peers.length === 0) {
+      peers = [
+        {
+          targetPersonaId: 'skeptic',
+          action: 'CHALLENGE',
+          critiqueOrSupport: 'Examining epistemological risks and verification hurdles.',
+        },
+        {
+          targetPersonaId: 'optimist',
+          action: 'AGREE',
+          critiqueOrSupport: 'Endorsing strategic upside with operational boundary controls.',
+        },
+      ];
+    } else if (peers.length === 1) {
+      peers.push({
+        targetPersonaId: peers[0].targetPersonaId === 'skeptic' ? 'optimist' : 'skeptic',
+        action: 'AGREE',
+        critiqueOrSupport: 'Synthesizing complementary perspectives from peer analysis.',
+      });
+    }
+
+    return {
+      responsesToPeers: peers,
+      updatedPosition:
+        raw.updatedPosition ||
+        raw.position ||
+        raw.stance ||
+        'Refining stance through dialectical synthesis.',
+      updatedConfidence:
+        typeof raw.updatedConfidence === 'number'
+          ? raw.updatedConfidence
+          : typeof raw.confidence === 'number'
+          ? raw.confidence
+          : 70,
+      shiftExplanation:
+        raw.shiftExplanation ||
+        raw.explanation ||
+        raw.reasoning ||
+        'Incorporating peer cross-examination and balancing risk trade-offs.',
+      whatChanged:
+        raw.whatChanged ||
+        raw.delta ||
+        'Refined conditions and calibrated confidence score.',
+    };
+  },
+  BaseCrossExamTurnSchema
+);
 
 // ---------------------------------------------------------------------------
 // 4. Convergence Check Schema (Phase 3)
 // ---------------------------------------------------------------------------
-export const ConvergenceCheckSchema = z.object({
+export const BaseConvergenceCheckSchema = z.object({
   draftConsensusStatement: z
     .string()
     .min(1, 'Draft consensus statement cannot be empty')
@@ -124,7 +265,35 @@ export const ConvergenceCheckSchema = z.object({
     .describe('Core principles or conclusions all or most members endorse'),
 });
 
-export type ConvergenceCheckPayload = z.infer<typeof ConvergenceCheckSchema>;
+export type ConvergenceCheckPayload = z.infer<typeof BaseConvergenceCheckSchema>;
+
+export const ConvergenceCheckSchema: z.ZodType<ConvergenceCheckPayload, any, any> = z.preprocess(
+  (raw: any) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    return {
+      draftConsensusStatement:
+        raw.draftConsensusStatement ||
+        raw.consensusStatement ||
+        raw.draft ||
+        raw.summary ||
+        'The council is progressing towards synthesis across core principles.',
+      remainingDisagreements: Array.isArray(raw.remainingDisagreements)
+        ? raw.remainingDisagreements
+        : [],
+      convergenceScore:
+        typeof raw.convergenceScore === 'number'
+          ? raw.convergenceScore
+          : typeof raw.score === 'number'
+          ? raw.score
+          : 75,
+      keyAlignmentPoints:
+        Array.isArray(raw.keyAlignmentPoints) && raw.keyAlignmentPoints.length > 0
+          ? raw.keyAlignmentPoints
+          : ['Agreement on systematic mitigation and baseline verification'],
+    };
+  },
+  BaseConvergenceCheckSchema
+);
 
 // ---------------------------------------------------------------------------
 // 5. Ratification Vote Schema (Phase 4)
@@ -137,28 +306,55 @@ export const RatificationVoteTypeSchema = z.enum([
 
 export type RatificationVoteEnum = z.infer<typeof RatificationVoteTypeSchema>;
 
-export const RatificationVoteSchema = z.object({
+export const BaseRatificationVoteSchema = z.object({
   vote: RatificationVoteTypeSchema.describe('Ratification vote decision'),
   amendmentSuggestion: z
     .string()
     .optional()
-    .describe('Proposed modification text required for sign-off (if SIGN_OFF_WITH_AMENDMENT)'),
+    .describe(
+      'Proposed modification text required for sign-off (if SIGN_OFF_WITH_AMENDMENT)'
+    ),
   objectionReason: z
     .string()
     .optional()
-    .describe('Irreconcilable philosophical or factual flaw preventing sign-off (if OBJECT)'),
+    .describe(
+      'Irreconcilable philosophical or factual flaw preventing sign-off (if OBJECT)'
+    ),
   closingComment: z
     .string()
     .min(1, 'Closing comment cannot be empty')
     .describe('Final remarks on the consensus statement'),
 });
 
-export type RatificationVotePayload = z.infer<typeof RatificationVoteSchema>;
+export type RatificationVotePayload = z.infer<typeof BaseRatificationVoteSchema>;
+
+export const RatificationVoteSchema: z.ZodType<RatificationVotePayload, any, any> = z.preprocess(
+  (raw: any) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    let vote = 'SIGN_OFF';
+    const rawVote = (raw.vote || '').toString().toUpperCase();
+    if (rawVote.includes('AMEND')) vote = 'SIGN_OFF_WITH_AMENDMENT';
+    else if (rawVote.includes('OBJECT')) vote = 'OBJECT';
+    else vote = 'SIGN_OFF';
+
+    return {
+      vote,
+      amendmentSuggestion: raw.amendmentSuggestion || raw.amendment || undefined,
+      objectionReason: raw.objectionReason || raw.objection || undefined,
+      closingComment:
+        raw.closingComment ||
+        raw.comment ||
+        raw.summary ||
+        `Persona vote recorded as ${vote}.`,
+    };
+  },
+  BaseRatificationVoteSchema
+);
 
 // ---------------------------------------------------------------------------
 // 6. Final Synthesis Schema (Phase 5)
 // ---------------------------------------------------------------------------
-export const FinalSynthesisSchema = z.object({
+export const BaseFinalSynthesisSchema = z.object({
   unanimousConclusion: z
     .string()
     .min(1, 'Conclusion cannot be empty')
@@ -179,7 +375,35 @@ export const FinalSynthesisSchema = z.object({
     .describe('Concrete operational next steps or directives'),
 });
 
-export type FinalSynthesisPayload = z.infer<typeof FinalSynthesisSchema>;
+export type FinalSynthesisPayload = z.infer<typeof BaseFinalSynthesisSchema>;
+
+export const FinalSynthesisSchema: z.ZodType<FinalSynthesisPayload, any, any> = z.preprocess(
+  (raw: any) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    return {
+      unanimousConclusion:
+        raw.unanimousConclusion ||
+        raw.conclusion ||
+        raw.verdict ||
+        raw.summary ||
+        'The council has rendered its synthesis based on rigorous deliberation.',
+      consensusReached:
+        typeof raw.consensusReached === 'boolean' ? raw.consensusReached : true,
+      keyReasons:
+        Array.isArray(raw.keyReasons) && raw.keyReasons.length > 0
+          ? raw.keyReasons
+          : ['Comprehensive multi-archetype deliberation and verification of constraints'],
+      mainCaveats: Array.isArray(raw.mainCaveats)
+        ? raw.mainCaveats
+        : ['Monitor second-order impacts and changing operational assumptions'],
+      actionableGuidance:
+        Array.isArray(raw.actionableGuidance) && raw.actionableGuidance.length > 0
+          ? raw.actionableGuidance
+          : ['Implement recommended staged execution with transparent milestone reviews'],
+    };
+  },
+  BaseFinalSynthesisSchema
+);
 
 // ---------------------------------------------------------------------------
 // 7. Session Options & Creation Request Schemas

@@ -150,7 +150,25 @@ INSTRUCTIONS:
    - shiftExplanation: Why your position or confidence shifted, or why it held firm against critiques.
    - whatChanged: Summary of what specific insight or argument moved your perspective (or "No change: ...").
 4. Maintain intellectual integrity. If a peer makes a valid point, concede or incorporate it. If flawed, challenge it rigorously.
-5. Provide your output strictly conforming to the requested JSON schema.`;
+5. Provide your output strictly conforming to the following JSON structure:
+{
+  "responsesToPeers": [
+    {
+      "targetPersonaId": "skeptic",
+      "action": "CHALLENGE",
+      "critiqueOrSupport": "Your objection is overly cautious because..."
+    },
+    {
+      "targetPersonaId": "pragmatist",
+      "action": "AGREE",
+      "critiqueOrSupport": "The milestone timeline you proposed is feasible..."
+    }
+  ],
+  "updatedPosition": "My refined stance is...",
+  "updatedConfidence": 75,
+  "shiftExplanation": "I adjusted my confidence because...",
+  "whatChanged": "Incorporated the operational safeguards."
+}`;
 }
 
 /**

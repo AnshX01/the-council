@@ -6,13 +6,17 @@ export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const apiKey = body?.apiKey?.trim();
-    const modelId = body?.modelId?.trim() || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const body = await req.json().catch(() => ({}));
+    let apiKey = body?.apiKey !== undefined && body?.apiKey !== '' ? body.apiKey.trim() : process.env.GEMINI_API_KEY;
+    const modelId = body?.modelId?.trim() || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
     if (!apiKey || apiKey.length < 10) {
       return NextResponse.json(
-        { ok: false, error: 'API key is too short or missing' },
+        {
+          ok: false,
+          error:
+            'API key is too short or missing. Obtain a free API key from Google AI Studio (https://aistudio.google.com/app/apikey).',
+        },
         { status: 400 }
       );
     }

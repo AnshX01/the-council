@@ -17,7 +17,7 @@ describe('Live Google Gemini API Smoke Test', () => {
   it.skipIf(!isLiveTestRunnable)(
     'executes a real end-to-end session against Gemini API with reduced rounds',
     async () => {
-      console.log('Running Live Gemini Smoke Test using model:', process.env.GEMINI_MODEL || 'gemini-2.5-flash');
+      console.log('Running Live Gemini Smoke Test using model:', process.env.GEMINI_MODEL || 'gemini-3.5-flash');
 
       const provider = new GeminiProvider();
       const health = await provider.healthCheck();
@@ -28,7 +28,7 @@ describe('Live Google Gemini API Smoke Test', () => {
         {
           maxCrossExamRounds: 1,
           maxRatificationCycles: 1,
-          concurrencyLimit: 2,
+          concurrencyLimit: 4,
         },
         provider
       );
@@ -40,7 +40,7 @@ describe('Live Google Gemini API Smoke Test', () => {
       expect(verdict.keySupportingReasons.length).toBeGreaterThanOrEqual(1);
       expect(engine.getSession().currentPhase).toBe('PHASE_5_FINAL_OUTPUT');
     },
-    120000 // 2 min timeout for live network test
+    240000 // 4 min timeout for live network test
   );
 
   if (!isLiveTestRunnable) {

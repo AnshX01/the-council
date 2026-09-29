@@ -30,5 +30,8 @@ export default defineConfig({
     url: 'http://localhost:3000/api/health',
     reuseExistingServer: false,
     timeout: 60 * 1000,
+    env: {
+      USE_MOCK_PROVIDER: 'true',
+    },
   },
 });

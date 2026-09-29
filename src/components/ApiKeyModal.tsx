@@ -11,9 +11,9 @@ interface ApiKeyModalProps {
 
 export function ApiKeyModal({ isOpen, onClose, onSave }: ApiKeyModalProps) {
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('gemini-2.5-flash');
+  const [model, setModel] = useState('gemini-3.5-flash');
   const [hasServerKey, setHasServerKey] = useState(false);
-  const [serverModel, setServerModel] = useState('gemini-2.5-flash');
+  const [serverModel, setServerModel] = useState('gemini-3.5-flash');
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{
     ok: boolean;
@@ -22,10 +22,19 @@ export function ApiKeyModal({ isOpen, onClose, onSave }: ApiKeyModalProps) {
   } | null>(null);
 
   useEffect(() => {
-    // Check local storage
+    // Check local storage and migrate legacy deprecated models
     if (typeof window !== 'undefined') {
       const storedKey = localStorage.getItem('the_council_gemini_api_key') || '';
-      const storedModel = localStorage.getItem('the_council_gemini_model') || 'gemini-2.5-flash';
+      let storedModel = localStorage.getItem('the_council_gemini_model') || 'gemini-3.5-flash';
+      if (
+        storedModel === 'gemini-2.5-flash' ||
+        storedModel === 'gemini-2.0-flash' ||
+        storedModel === 'gemini-1.5-flash' ||
+        storedModel === 'gemini-1.5-pro'
+      ) {
+        storedModel = 'gemini-3.5-flash';
+        localStorage.setItem('the_council_gemini_model', storedModel);
+      }
       setApiKey(storedKey);
       setModel(storedModel);
     }
@@ -46,10 +55,10 @@ export function ApiKeyModal({ isOpen, onClose, onSave }: ApiKeyModalProps) {
 
   const handleValidate = async () => {
     const keyToTest = apiKey.trim();
-    if (!keyToTest) {
+    if (!keyToTest && !hasServerKey) {
       setValidationResult({
         ok: false,
-        message: 'Please enter a Gemini API key to validate.',
+        message: 'Please enter a Gemini API key or configure GEMINI_API_KEY on the server.',
       });
       return;
     }
@@ -73,9 +82,14 @@ export function ApiKeyModal({ isOpen, onClose, onSave }: ApiKeyModalProps) {
         });
         if (data.modelId) setModel(data.modelId);
       } else {
+        const errorMsg = data.error || 'Failed to authenticate with Google Gemini.';
+        const hint =
+          errorMsg.includes('404') || errorMsg.includes('not found') || errorMsg.includes('API key')
+            ? ' Note: Google AI Studio keys begin with "AIzaSy...".'
+            : '';
         setValidationResult({
           ok: false,
-          message: data.error || 'Failed to authenticate with Google Gemini.',
+          message: `${errorMsg}${hint}`,
         });
       }
     } catch (err: any) {
@@ -222,9 +236,10 @@ export function ApiKeyModal({ isOpen, onClose, onSave }: ApiKeyModalProps) {
               onChange={(e) => setModel(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             >
-              <option value="gemini-2.5-flash">gemini-2.5-flash (Recommended default)</option>
-              <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-              <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+              <option value="gemini-3.5-flash">gemini-3.5-flash (Recommended - Ultra Fast & Capable)</option>
+              <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (High-Throughput Fallback)</option>
+              <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Balanced Speed)</option>
+              <option value="gemini-3.8-flash">gemini-3.8-flash (High Intelligence Reasoning)</option>
             </select>
           </div>
 

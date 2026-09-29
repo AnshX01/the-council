@@ -21,7 +21,7 @@ export async function GET() {
       status: 'healthy',
       provider: provider.providerId,
       hasServerApiKey,
-      serverModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      serverModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
       providerHealth: health,
       timestamp: new Date().toISOString(),
       uptimeSeconds: process.uptime(),

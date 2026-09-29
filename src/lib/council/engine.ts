@@ -39,6 +39,7 @@ import {
   FramingSchema,
   OpeningPositionSchema,
   CrossExamTurnSchema,
+  CrossExamTurnPayload,
   ConvergenceCheckSchema,
   RatificationVoteSchema,
   FinalSynthesisSchema,
@@ -263,8 +264,11 @@ export class DeliberationEngine {
         ...response.data,
         timestamp: new Date().toISOString(),
       };
-    } catch (err) {
-      console.warn('Moderator framing call failed, using deterministic fallback:', err);
+    } catch (err: any) {
+      console.warn(
+        'Moderator framing call failed, using deterministic fallback:',
+        err?.message || String(err)
+      );
       framing = generateFallbackFraming(this.session.rawQuery);
     }
 
@@ -301,6 +305,7 @@ export class DeliberationEngine {
     const activeMembers = this.getActiveCouncilMembers();
     const framing = this.session.framing!;
 
+    const openingErrors: string[] = [];
     // Run active council members in parallel bounded by concurrency limiter
     const openingPromises = activeMembers.map(async (persona) => {
       this.checkBudgetAndTimeout();
@@ -342,7 +347,9 @@ export class DeliberationEngine {
         });
       } catch (err: any) {
         // Mark persona as unavailable upon failure after retries
-        console.warn(`Persona ${persona.id} failed opening position:`, err.message);
+        const errMsg = err?.message || String(err);
+        openingErrors.push(errMsg);
+        console.warn(`Persona ${persona.id} failed opening position:`, errMsg);
         this.session.memberStatuses[persona.id] = 'unavailable';
 
         this.emit({
@@ -351,13 +358,21 @@ export class DeliberationEngine {
           timestamp: new Date().toISOString(),
           payload: {
             personaId: persona.id,
-            reason: `Call failed: ${err.message}`,
+            reason: `Call failed: ${errMsg}`,
           },
         });
       }
     });
 
     await Promise.all(openingPromises);
+
+    const remainingActive = this.getActiveCouncilMembers();
+    if (remainingActive.length === 0) {
+      const summaryReason = openingErrors[0] || 'All persona calls failed';
+      throw new Error(
+        `Deliberation chamber unable to convene: All personas failed (${summaryReason}). Please verify your Gemini API key and model selection in Settings.`
+      );
+    }
   }
 
   // ===========================================================================
@@ -416,10 +431,10 @@ export class DeliberationEngine {
         );
         this.session.totalCallsExecuted++;
 
-        const turnData = response.data;
+        const turnData: CrossExamTurnPayload = response.data;
         const deltaConfidence = turnData.updatedConfidence - prevConfidence;
         const catalysts = turnData.responsesToPeers.map(
-          (r) => r.targetPersonaId as PersonaId
+          (r: any) => r.targetPersonaId as PersonaId
         );
 
         const shiftRecord: ShiftRecord = {
@@ -440,7 +455,7 @@ export class DeliberationEngine {
         const turn: CrossExamTurn = {
           personaId: persona.id,
           roundNumber,
-          responses: turnData.responsesToPeers.map((r) => ({
+          responses: turnData.responsesToPeers.map((r: any) => ({
             targetPersonaId: r.targetPersonaId as PersonaId,
             action: r.action,
             critiqueOrSupport: r.critiqueOrSupport,
@@ -571,8 +586,8 @@ export class DeliberationEngine {
         remainingDisagreements: response.data.remainingDisagreements,
         keyAlignmentPoints: response.data.keyAlignmentPoints,
       };
-    } catch (err) {
-      console.warn('Moderator convergence check failed, using fallback:', err);
+    } catch (err: any) {
+      console.warn('Moderator convergence check failed, using fallback:', err?.message || String(err));
       const fallback = generateFallbackConvergence(
         roundNumber,
         metrics.alignmentScore,
@@ -793,8 +808,8 @@ export class DeliberationEngine {
         );
         this.session.totalCallsExecuted++;
         currentDraft = revResponse.data.trim();
-      } catch (err) {
-        console.warn('Moderator revision call failed, using fallback:', err);
+      } catch (err: any) {
+        console.warn('Moderator revision call failed, using fallback:', err?.message || String(err));
         currentDraft = generateFallbackRevisedDraft(currentDraft, currentCycleVotes);
       }
 
@@ -897,8 +912,8 @@ export class DeliberationEngine {
       );
       this.session.totalCallsExecuted++;
       synthesisData = response.data;
-    } catch (err) {
-      console.warn('Moderator final synthesis failed, using fallback:', err);
+    } catch (err: any) {
+      console.warn('Moderator final synthesis failed, using fallback:', err?.message || String(err));
       synthesisData = generateFallbackFinalSynthesis(
         this.session.rawQuery,
         finalDraft,
