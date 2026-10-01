@@ -1,38 +1,30 @@
 # Resume State — The Council Daily-Driver Overhaul
 
-**Current Phase:** Phase 3 (Durable Engine & API v1)
-**Last Green Gate (Phase 2 Gate: PASSED):**
-- Commit: `5e3ce49`
-- `npm run typecheck`: 0 errors
-- `npm test`: 14 test files, 97 passed, 1 skipped, 0 failed
-- `npm run build`: Compiled successfully in 2.3s, page sizes well within budget
-- `npx playwright test`: 16/16 passed on dedicated port 3100
-- Characterization suite: 6/6 passed (100% green)
+**Current Phase:** ALL PHASES COMPLETE (Phases 1, 2, 3, 4, 5, 6 — 100% Green & Verified)
 
-**In Progress (Phase 3 — Durable Engine & API v1):**
-1. API v1 endpoints:
-   - `POST /api/v1/sessions` (validate query/options, check spend cap, idempotency key, enqueue job)
-   - `GET /api/v1/sessions` (paginated list, tag/search filters)
-   - `GET /api/v1/sessions/[id]` (session details + verdict)
-   - `PATCH /api/v1/sessions/[id]` (pin, rename title, tags)
-   - `DELETE /api/v1/sessions/[id]` (soft delete)
-   - `GET /api/v1/sessions/[id]/stream` (resumable SSE with `Last-Event-ID` / `?after=seq`, replay from DB then live tail via eventBus, keep-alive heartbeats, anti-buffering headers)
-   - `POST /api/v1/sessions/[id]/cancel` (prompt cancellation via DurableRunner)
-   - `POST /api/v1/sessions/[id]/rerun` (clone options to new session)
-   - `GET /api/v1/sessions/[id]/export` (format=md|json|txt)
-   - `GET /api/v1/settings` & `PATCH /api/v1/settings` (validated settings store)
-   - `POST /api/v1/settings/test-key` (server-side ping without echoing key)
-   - `GET /api/v1/usage` (usage ledger metrics & spend meter)
-   - `GET /api/v1/health/live` & `GET /api/v1/health/ready` (readiness & liveness probes)
-2. OpenAPI 3.1 Spec (`docs/openapi.yaml`) & Contract Tests (`tests/integration/contract.test.ts`)
-3. Origin / Host verification middleware / guard (`src/lib/api/securityGuard.ts`)
-4. Gemini Provider hardening (circuit breaker, exponential backoff with jitter, retry-after support, token counter, sensitive topic defense)
+**Last Green Verification Gate (`npm run verify`):**
+- Commit: `b6fc22a` (and documentation updates)
+- `npm run typecheck`: **0 errors**
+- `npm run lint`: **0 errors, 0 warnings**
+- `npm test`: **21 test files, 143 passed, 1 skipped (live Gemini without key), 0 failed**
+- Characterization Suite: **6/6 passed** (locked engine invariants strictly preserved)
+- `npm run build`: Compiled successfully, all **14/14 static pages generated**, exit code `0`
+- `npm run test:e2e`: **28/28 passed** on dedicated port 3100 across Chromium and Mobile Chrome Pixel 7, including WCAG AA accessibility audit
+- Backups & Restores: Tested and verified working (`npm run backup`, `npm run restore`)
 
-**What is Next (Ordered):**
-1. Complete API v1 implementation and contract tests
-2. Complete hardened Gemini provider + chaos tests
-3. Phase 3 Integration Gate
-4. Phase 4: Atlas Design System & Round Table UI
+**Deliverables Produced & Verified:**
+1. **Local Persistence:** SQLite WAL database (`src/lib/storage/db.ts`), migrations (`001`-`004`), monotonic event-sourced repository (`src/lib/storage/repository.ts`).
+2. **Durable Runner:** Background job runner with lease heartbeat claiming, crash recovery, and cancel support (`src/lib/runner/durableRunner.ts`).
+3. **Resilient API v1:** Complete CRUD endpoints, resumable SSE with `Last-Event-ID`, OpenAPI 3.1 spec, Circuit Breaker, Sensitive Topics guard, Origin/Host validation.
+4. **Atlas Design System & Round Table UI:**
+   - 9-member circular table with Moderator at 12 o'clock, animated SVG interaction arcs, live halo pulsing, confidence rings, delta chips, verdict seal.
+   - Persona drawer, replay scrubber, accessible list view toggle.
+   - Command palette (`Ctrl+K`), onboarding wizard, offline banner, spend headroom meter, live diagnostics, history search, living UI catalog (`/dev/ui`).
+5. **Tooling & Launchers:**
+   - Windows PowerShell launcher (`council.ps1`)
+   - Double-click batch script (`council.bat`)
+   - `npm run council`, `npm run backup`, `npm run restore`, `npm run reset-data`, `npm run verify`
+   - Complete documentation: `OVERHAUL_LOG.md`, `DESIGN_SYSTEM.md`, `GAP_AUDIT.md`, `ARCHITECTURE_V2.md`, `DECISIONS.md`, `LAUNCH_CHECKLIST.md`, `SECURITY.md`, `TEST_PLAN.md`, `A11Y_REPORT.md`, `LOCAL_SETUP.md`, `RED_TEAM_REPORT.md`.
 
 **Decisions Made:**
-- ADR-007 through ADR-010 recorded.
+- ADR-001 through ADR-010 recorded in `docs/DECISIONS.md`.
