@@ -73,5 +73,47 @@
 ---
 
 ## Phase 2 — Foundations (Wave 2)
-*(Underway: SQLite storage layer, versioned migrations, repository pattern, durable runner, settings store)*
+
+### 2.1 Persistence & Storage Layer
+- Created `src/lib/storage/db.ts`: SQLite wrapper using native Node.js v24 `DatabaseSync` (`node:sqlite`). Implemented Write-Ahead Logging (`PRAGMA journal_mode = WAL`), foreign keys enforcement (`PRAGMA foreign_keys = ON`), synchronous NORMAL, and busy timeout.
+- Created `src/lib/storage/migrations.ts`: Versioned schema migration runner. Implemented schema version 1 creating:
+  - `sessions`: Core table for durable deliberation records, status, options, verdict, token metrics, lease timestamps, worker ID, soft deletion.
+  - `session_events`: Monotonic append-only event log with `(session_id, seq)` uniqueness constraint.
+  - `settings`: Validated key-value settings table initialized with defaults.
+  - `usage_ledger`: Append-only personal token and USD cost tracking table.
+  - `idempotency_keys`: Unique key tracking preventing duplicate session creation.
+  - `sessions_fts`: FTS5 full-text search virtual table indexed by session ID, title, query, and verdict.
+- Created `src/lib/storage/repository.ts`: Typed repository abstractions for `SessionRepository`, `EventRepository`, `IdempotencyRepository`, `SettingsRepository`, and `UsageRepository`.
+- Tests created: `tests/unit/db.test.ts` (2/2 passing), `tests/unit/repository.test.ts` (7/7 passing).
+
+### 2.2 Durable Background Runner & Event Bus
+- Created `src/lib/runner/durableRunner.ts`: Autonomous background worker that polls SQLite for `QUEUED` sessions, claims jobs via worker lease and periodic heartbeat renewal, executes `DeliberationEngine`, streams events to SQLite and `eventBus`, detects/recovers interrupted jobs on crash/restart, and safely handles prompt cancellations.
+- Created `src/lib/runner/eventBus.ts`: In-process pub/sub event broadcaster distributing live events to active SSE client connections.
+- Implemented `abort()` on `DeliberationEngine` (`src/lib/council/engine.ts`) with immediate suppression of post-cancellation events.
+- Tests created: `tests/integration/runner.test.ts` (7/7 passing, covering execution, event monotonicity, prompt cancellation, interrupted crash recovery, runner race conditions, idempotency, and re-claim).
+
+### 2.3 Configuration, Structured Logging & Error Handling
+- Created `src/lib/config/env.ts`: Zod environment validation schema (`EnvSchema`, `getEnvConfig`).
+- Created `src/lib/logger.ts`: Structured JSON logger with request/session context, automated secret redaction, and rotating file logger in `./logs/council.log`.
+- Created `src/lib/api/error.ts`: Standard error envelope `{ error: { code, message, requestId, details? } }` and response helpers.
+- Tests created: `tests/unit/env.test.ts` (4/4 passing), `tests/unit/logger.test.ts` (3/3 passing), `tests/unit/error.test.ts` (3/3 passing).
+
+### 2.4 DevOps & Local Scripts
+- Created `scripts/backup.ts`, `scripts/restore.ts`, `scripts/reset-data.ts`, `scripts/council.ts`.
+- Created `council.ps1` (PowerShell) and `council.bat` (Windows double-click launcher).
+- Created `.github/workflows/ci.yml`.
+- Updated `package.json` with `council`, `verify`, `backup`, `restore`, `reset-data`, `typecheck`.
+- Updated `playwright.config.ts` to use dedicated test port 3100.
+
+### 2.5 Phase 2 Integration Gate: PASSED
+- `npm run typecheck`: 0 errors
+- `npm test`: 14 test files, 97 passed, 1 skipped, 0 failed
+- `npm run build`: Compiled successfully in 2.3s
+- `npx playwright test`: 16/16 passed on port 3100
+- Commit: `5e3ce49`
+
+---
+
+## Phase 3 — Durable Engine & API v1 (Wave 2 continued)
+*(Underway: API v1 routes, resumable SSE with Last-Event-ID, OpenAPI 3.1 spec, contract tests, security guard, Gemini provider hardening)*
 

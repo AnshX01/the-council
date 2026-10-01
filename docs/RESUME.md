@@ -1,34 +1,38 @@
 # Resume State — The Council Daily-Driver Overhaul
 
-**Current Phase:** Phase 2 (Foundations) — Completing remaining Phase 2 items
-**Last Green Gate:**
-- `npx vitest run`: 11 test files, 87 passed, 1 skipped, 0 failed
-- `npx tsc --noEmit`: Clean, 0 errors
-- `npm run build`: Compiled successfully in 2.3s
+**Current Phase:** Phase 3 (Durable Engine & API v1)
+**Last Green Gate (Phase 2 Gate: PASSED):**
+- Commit: `5e3ce49`
+- `npm run typecheck`: 0 errors
+- `npm test`: 14 test files, 97 passed, 1 skipped, 0 failed
+- `npm run build`: Compiled successfully in 2.3s, page sizes well within budget
 - `npx playwright test`: 16/16 passed on dedicated port 3100
+- Characterization suite: 6/6 passed (100% green)
 
-**In Progress:**
-- Phase 2 Foundations completion:
-  1. Zod environment & configuration validation (`src/lib/config/env.ts`)
-  2. Structured logger with request & session IDs, log levels, and rotation (`src/lib/logger.ts`)
-  3. API error envelope (`src/lib/api/error.ts`)
-  4. Validated settings store API and repository wiring
-  5. NPM scripts (`npm run council`, `verify`, `backup`, `restore`, `reset-data`)
-  6. PowerShell (`council.ps1`) and batch (`council.bat`) launchers
-  7. GitHub Actions CI workflow (`.github/workflows/ci.yml`)
+**In Progress (Phase 3 — Durable Engine & API v1):**
+1. API v1 endpoints:
+   - `POST /api/v1/sessions` (validate query/options, check spend cap, idempotency key, enqueue job)
+   - `GET /api/v1/sessions` (paginated list, tag/search filters)
+   - `GET /api/v1/sessions/[id]` (session details + verdict)
+   - `PATCH /api/v1/sessions/[id]` (pin, rename title, tags)
+   - `DELETE /api/v1/sessions/[id]` (soft delete)
+   - `GET /api/v1/sessions/[id]/stream` (resumable SSE with `Last-Event-ID` / `?after=seq`, replay from DB then live tail via eventBus, keep-alive heartbeats, anti-buffering headers)
+   - `POST /api/v1/sessions/[id]/cancel` (prompt cancellation via DurableRunner)
+   - `POST /api/v1/sessions/[id]/rerun` (clone options to new session)
+   - `GET /api/v1/sessions/[id]/export` (format=md|json|txt)
+   - `GET /api/v1/settings` & `PATCH /api/v1/settings` (validated settings store)
+   - `POST /api/v1/settings/test-key` (server-side ping without echoing key)
+   - `GET /api/v1/usage` (usage ledger metrics & spend meter)
+   - `GET /api/v1/health/live` & `GET /api/v1/health/ready` (readiness & liveness probes)
+2. OpenAPI 3.1 Spec (`docs/openapi.yaml`) & Contract Tests (`tests/integration/contract.test.ts`)
+3. Origin / Host verification middleware / guard (`src/lib/api/securityGuard.ts`)
+4. Gemini Provider hardening (circuit breaker, exponential backoff with jitter, retry-after support, token counter, sensitive topic defense)
 
 **What is Next (Ordered):**
-1. Commit Phase 2 foundations checkpoint
-2. Implement Phase 3: API v1 routes (`/api/v1/sessions*`, `/api/v1/settings*`, `/api/v1/usage*`, `/api/v1/health*`), resumable SSE (`Last-Event-ID`), idempotency, OpenAPI spec
-3. Implement Phase 4: Atlas design system migration, Round Table circular component (9 seats, angles, arcs, ballots, confidence rings, drawer), top-bar command palette, onboarding wizard
-4. Implement Phase 5: Diagnostics page, daily backups, performance budgets
-5. Implement Phase 6: Red Team adversarial review, security & prompt injection test corpus, final release
+1. Complete API v1 implementation and contract tests
+2. Complete hardened Gemini provider + chaos tests
+3. Phase 3 Integration Gate
+4. Phase 4: Atlas Design System & Round Table UI
 
 **Decisions Made:**
-- ADR-007: Fixed DB decoupling in DurableRunner by allowing `db` in RunnerOptions.
-- ADR-008: Dedicated Playwright test port 3100 to avoid conflicting with active Next.js instances on port 3000.
-- ADR-009: Used `DatabaseSync` from `node:sqlite` (Node.js v24 LTS native built-in) for zero native-build dependency friction on Windows.
-- ADR-010: Engine `abort()` terminates active deliberation loops promptly and suppresses trailing event emissions.
-
-**Known Failing Tests:**
-- None. (0 failures across unit, integration, and e2e suites).
+- ADR-007 through ADR-010 recorded.

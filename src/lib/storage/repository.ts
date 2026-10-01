@@ -395,8 +395,9 @@ export class IdempotencyRepository {
 
   public recordIdempotencyKey(key: string, sessionId: string): void {
     const stmt = this.db.prepare(`
-      INSERT OR IGNORE INTO idempotency_keys (key, session_id, created_at)
+      INSERT INTO idempotency_keys (key, session_id, created_at)
       VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET session_id = excluded.session_id, created_at = excluded.created_at
     `);
     stmt.run(key, sessionId, Date.now());
   }
@@ -475,6 +476,43 @@ export class UsageRepository {
       allowed: currentSpendUSD < capUSD,
       currentSpendUSD,
       capUSD,
+    };
+  }
+
+  public getUsageSummary(limit = 20): {
+    monthlySpendUSD: number;
+    allTimeSpendUSD: number;
+    totalPromptTokens: number;
+    totalCandidateTokens: number;
+    totalCalls: number;
+    recentEntries: any[];
+  } {
+    const monthlySpendUSD = this.getMonthlySpendUSD();
+
+    const aggStmt = this.db.prepare(`
+      SELECT
+        COALESCE(SUM(estimated_cost_usd), 0.0) as all_time_usd,
+        COALESCE(SUM(prompt_tokens), 0) as total_prompt,
+        COALESCE(SUM(candidate_tokens), 0) as total_candidate,
+        COUNT(*) as total_calls
+      FROM usage_ledger
+    `);
+    const agg = aggStmt.get() as any;
+
+    const recentStmt = this.db.prepare(`
+      SELECT * FROM usage_ledger
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+    const recentEntries = recentStmt.all(limit) as any[];
+
+    return {
+      monthlySpendUSD,
+      allTimeSpendUSD: agg?.all_time_usd || 0.0,
+      totalPromptTokens: agg?.total_prompt || 0,
+      totalCandidateTokens: agg?.total_candidate || 0,
+      totalCalls: agg?.total_calls || 0,
+      recentEntries,
     };
   }
 }

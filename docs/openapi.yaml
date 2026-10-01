@@ -1,0 +1,396 @@
+openapi: 3.1.0
+info:
+  title: The Council API
+  description: Local-first deliberative engine powering 8 autonomous AI personas and Moderator.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Localhost Council Server
+
+paths:
+  /sessions:
+    get:
+      summary: List deliberation sessions
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 30
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: pinned
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+    post:
+      summary: Enqueue deliberation session
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created and queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateSessionResponse'
+        '402':
+          description: Spend cap exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error
+
+  /sessions/{id}:
+    get:
+      summary: Retrieve session by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session details
+        '404':
+          description: Session not found
+    patch:
+      summary: Update session metadata (title, pinned, tags)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchSessionRequest'
+      responses:
+        '200':
+          description: Updated session
+    delete:
+      summary: Soft-delete session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session soft deleted
+
+  /sessions/{id}/stream:
+    get:
+      summary: Resumable Server-Sent Events (SSE) deliberation stream
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Last-Event-ID
+          in: header
+          schema:
+            type: string
+        - name: after
+          in: query
+          schema:
+            type: integer
+            default: -1
+      responses:
+        '200':
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /sessions/{id}/cancel:
+    post:
+      summary: Cancel active deliberation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session cancelled
+
+  /sessions/{id}/rerun:
+    post:
+      summary: Clone and rerun deliberation session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: New session enqueued
+
+  /sessions/{id}/export:
+    get:
+      summary: Export session verdict and transcript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [md, json, txt]
+            default: md
+      responses:
+        '200':
+          description: Formatted export
+
+  /settings:
+    get:
+      summary: Retrieve local settings
+      responses:
+        '200':
+          description: Stored settings
+    patch:
+      summary: Update local settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchSettingsRequest'
+      responses:
+        '200':
+          description: Settings updated
+
+  /settings/test-key:
+    post:
+      summary: Test Gemini API key without echoing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apiKey:
+                  type: string
+                modelId:
+                  type: string
+      responses:
+        '200':
+          description: Key validation result
+
+  /usage:
+    get:
+      summary: Retrieve personal spend ledger and headroom
+      responses:
+        '200':
+          description: Usage statistics
+
+  /health/live:
+    get:
+      summary: Liveness health check
+      responses:
+        '200':
+          description: Process alive
+
+  /health/ready:
+    get:
+      summary: Readiness health check
+      responses:
+        '200':
+          description: Database and provider ready
+
+components:
+  schemas:
+    CreateSessionRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 3
+          maxLength: 4000
+        title:
+          type: string
+          maxLength: 120
+        options:
+          type: object
+          properties:
+            maxCrossExamRounds:
+              type: integer
+              minimum: 1
+              maximum: 8
+            maxRatificationCycles:
+              type: integer
+              minimum: 1
+              maximum: 5
+            mockMode:
+              type: boolean
+            mockScenario:
+              type: string
+              enum: [UNANIMOUS_CONSENSUS, DEADLOCK, REVISED_CONSENSUS]
+            modelId:
+              type: string
+            apiKey:
+              type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CreateSessionResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            session:
+              $ref: '#/components/schemas/Session'
+            streamUrl:
+              type: string
+        requestId:
+          type: string
+
+    PatchSessionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        pinned:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+
+    PatchSettingsRequest:
+      type: object
+      properties:
+        defaultModel:
+          type: string
+        fallbackModels:
+          type: array
+          items:
+            type: string
+        maxCrossExamRounds:
+          type: integer
+        maxRatificationCycles:
+          type: integer
+        monthlySpendCapUSD:
+          type: number
+        enableLAN:
+          type: boolean
+        theme:
+          type: string
+          enum: [dark, light, system]
+        enable3DTilt:
+          type: boolean
+        enableReducedMotion:
+          type: boolean
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        query:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED, INTERRUPTED]
+        current_phase:
+          type: string
+        verdict_type:
+          type: string
+          nullable: true
+        model_used:
+          type: string
+        call_count:
+          type: integer
+        pinned:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: integer
+
+    SessionListResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            sessions:
+              type: array
+              items:
+                $ref: '#/components/schemas/Session'
+            count:
+              type: integer
+            limit:
+              type: integer
+            offset:
+              type: integer
+        requestId:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - requestId
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+            details:
+              type: object
