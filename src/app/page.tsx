@@ -109,7 +109,7 @@ export default function LandingPage() {
         }
       }
 
-      const res = await fetch('/api/sessions', {
+      let res = await fetch('/api/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -123,11 +123,27 @@ export default function LandingPage() {
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to convene the council');
+        res = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: query.trim(),
+            options: {
+              apiKey,
+              modelId,
+              maxCrossExamRounds,
+            },
+          }),
+        });
       }
 
-      const { sessionId } = await res.json();
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error?.message || errorData.error || 'Failed to convene the council');
+      }
+
+      const resData = await res.json();
+      const sessionId = resData.data?.sessionId || resData.data?.session?.id || resData.sessionId;
       toast({
         type: 'info',
         title: 'Chamber Convened',

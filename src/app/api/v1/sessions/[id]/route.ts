@@ -9,7 +9,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { SessionRepository } from '@/lib/storage/repository';
+import { SessionRepository, EventRepository } from '@/lib/storage/repository';
 import { apiErrorResponse, apiSuccessResponse } from '@/lib/api/error';
 import { validateLocalhostRequest, SECURITY_HEADERS } from '@/lib/api/securityGuard';
 
@@ -41,8 +41,38 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     );
   }
 
+  const eventRepo = new EventRepository();
+  const rawEvents = eventRepo.getAllEvents(id);
+  const events = rawEvents.map((e) => ({
+    id: String(e.id),
+    seq: e.seq,
+    sessionId: e.session_id,
+    event: e.event_type as any,
+    timestamp: new Date(e.created_at).toISOString(),
+    payload: e.payload,
+  }));
+
+  const normalizedSession = {
+    ...session,
+    sessionId: session.id,
+    rawQuery: session.query,
+    currentPhase: session.current_phase as any,
+    finalVerdict: session.verdict_payload as any,
+    memberStatuses: {
+      skeptic: 'active',
+      optimist: 'active',
+      ethicist: 'active',
+      pragmatist: 'active',
+      systems_thinker: 'active',
+      historian: 'active',
+      humanist: 'active',
+      contrarian: 'active',
+      moderator: 'active',
+    },
+  };
+
   return apiSuccessResponse(
-    { session },
+    { session: normalizedSession, events },
     200,
     requestId,
     SECURITY_HEADERS

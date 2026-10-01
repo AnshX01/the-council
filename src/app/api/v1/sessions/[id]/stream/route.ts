@@ -58,8 +58,16 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     start(controller) {
       function sendEvent(ev: StoredEvent) {
         try {
-          const payload = typeof ev.payload === 'string' ? ev.payload : JSON.stringify(ev.payload);
-          const chunk = `id: ${ev.seq}\nevent: ${ev.event_type}\ndata: ${payload}\n\n`;
+          const parsedPayload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+          const sseEvent = {
+            id: String(ev.seq),
+            seq: ev.seq,
+            sessionId: ev.session_id,
+            event: ev.event_type,
+            timestamp: new Date(ev.created_at).toISOString(),
+            payload: parsedPayload,
+          };
+          const chunk = `id: ${ev.seq}\nevent: ${ev.event_type}\ndata: ${JSON.stringify(sseEvent)}\n\n`;
           controller.enqueue(encoder.encode(chunk));
         } catch {
           // Controller might be closed

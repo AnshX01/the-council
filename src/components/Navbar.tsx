@@ -61,14 +61,48 @@ export function Navbar() {
             </div>
           </Link>
 
-          <div className="flex items-center gap-2.5 sm:gap-3">
+          <nav className="hidden md:flex items-center gap-1">
             <Link
               href="/"
-              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-[10px] text-gray-600 dark:text-gray-300 hover:text-gray-950 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              className="text-xs font-medium px-3 py-1.5 rounded-[10px] text-gray-700 dark:text-gray-300 hover:text-gray-950 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
             >
-              <PlusCircle className="w-3.5 h-3.5 text-gray-400" />
-              <span>New Deliberation</span>
+              Chamber
             </Link>
+            <Link
+              href="/history"
+              className="text-xs font-medium px-3 py-1.5 rounded-[10px] text-gray-700 dark:text-gray-300 hover:text-gray-950 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            >
+              History
+            </Link>
+            <Link
+              href="/settings"
+              className="text-xs font-medium px-3 py-1.5 rounded-[10px] text-gray-700 dark:text-gray-300 hover:text-gray-950 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            >
+              Settings
+            </Link>
+            <Link
+              href="/diagnostics"
+              className="text-xs font-medium px-3 py-1.5 rounded-[10px] text-gray-700 dark:text-gray-300 hover:text-gray-950 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            >
+              Diagnostics
+            </Link>
+          </nav>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Quick Command Palette trigger button */}
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, metaKey: true }));
+              }}
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white px-2.5 py-1.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 transition-colors"
+              title="Open Command Palette (Ctrl+K / Cmd+K)"
+            >
+              <span>Search</span>
+              <kbd className="px-1 text-[10px] font-mono bg-white dark:bg-zinc-800 rounded shadow-xs">
+                ⌘K
+              </kbd>
+            </button>
 
             {/* Engine / API Key Status Trigger */}
             <button

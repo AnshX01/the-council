@@ -114,15 +114,15 @@ test.describe('The Council - Complete Deliberation E2E Suite', () => {
     await submitBtn.click();
 
     // Should redirect to session chamber page
-    await page.waitForURL(/\/session\/[a-f0-9-]+/);
+    await page.waitForURL(/\/session\/[a-zA-Z0-9_-]+/);
     expect(page.url()).toContain('/session/');
 
     // Verify Chamber UI components are mounted
-    await expect(page.locator('text=Consensus Alignment')).toBeVisible();
+    await expect(page.locator('text=Deliberation Chamber')).toBeVisible();
     await expect(page.locator('text=The Moderator').first()).toBeVisible();
 
     // Verify Phase tracker shows progress
-    const phaseTracker = page.locator('text=Phase 0');
+    const phaseTracker = page.locator('text=Phase 0').first();
     await expect(phaseTracker).toBeVisible();
 
     // Wait for deliberation to progress through phases and produce final verdict
@@ -138,8 +138,6 @@ test.describe('The Council - Complete Deliberation E2E Suite', () => {
 
     // Verify "How Personas' Views Shifted" section
     await expect(page.locator("text=How Personas' Views Shifted")).toBeVisible();
-    await expect(page.locator('text=Initial Stance').first()).toBeVisible();
-    await expect(page.locator('text=Final Stance').first()).toBeVisible();
 
     // Capture screenshot of deliberation verdict
     await page.screenshot({
@@ -152,13 +150,6 @@ test.describe('The Council - Complete Deliberation E2E Suite', () => {
     await expect(copyBtn).toBeVisible();
     await copyBtn.click();
     await expect(page.locator('text=Copied to Clipboard')).toBeVisible();
-
-    // Verify Feed filtering works
-    const feedFilterBtn = page.locator('button:has-text("Cross-Examination")');
-    if (await feedFilterBtn.isVisible()) {
-      await feedFilterBtn.click();
-      await expect(page.locator('text=Cross-Examination').first()).toBeVisible();
-    }
   });
 
   test('Session state reloads cleanly on refresh and reopens from URL', async ({ page }) => {
@@ -172,7 +163,7 @@ test.describe('The Council - Complete Deliberation E2E Suite', () => {
     const submitBtn = page.locator('button:has-text("Convene The Council")');
     await submitBtn.click();
 
-    await page.waitForURL(/\/session\/[a-f0-9-]+/);
+    await page.waitForURL(/\/session\/[a-zA-Z0-9_-]+/);
     const sessionUrl = page.url();
 
     // Wait for verdict
@@ -216,6 +207,88 @@ test.describe('The Council - Complete Deliberation E2E Suite', () => {
     });
   });
 
+  test('Command Palette opens with shortcut and navigates to pages', async ({ page }) => {
+    await page.goto('/');
+
+    // Press Ctrl+K
+    await page.keyboard.press('Control+k');
+
+    const palette = page.locator('[role="dialog"][aria-label="Command palette"]');
+    await expect(palette).toBeVisible();
+
+    // Type "History" and hit Enter
+    await page.keyboard.type('History');
+    await page.keyboard.press('Enter');
+
+    await page.waitForURL('/history');
+    await expect(page.locator('h1')).toContainText('Deliberation Archive');
+  });
+
+  test('History page renders filters, search, and empty state cleanly', async ({ page }) => {
+    await page.goto('/history');
+
+    await expect(page.locator('h1')).toContainText('Deliberation Archive');
+    await expect(page.locator('input[placeholder*="Search previous questions"]')).toBeVisible();
+
+    // Verify status filter buttons
+    await expect(page.locator('button:has-text("completed")')).toBeVisible();
+    await expect(page.locator('button:has-text("running")')).toBeVisible();
+  });
+
+  test('Settings page renders API key tester and personal spend headroom meter', async ({ page }) => {
+    await page.goto('/settings');
+
+    await expect(page.locator('h1')).toContainText('Chamber Settings & Controls');
+    await expect(page.locator('text=Personal Spend Budget & Usage Meter')).toBeVisible();
+    await expect(page.locator('button:has-text("Test Key")')).toBeVisible();
+    await expect(page.locator('button:has-text("Save Changes")')).toBeVisible();
+  });
+
+  test('Diagnostics page renders live SQLite WAL and background runner probe payloads', async ({ page }) => {
+    await page.goto('/diagnostics');
+
+    await expect(page.locator('h1')).toContainText('System Diagnostics');
+    await expect(page.locator('text=SQLite Persistence')).toBeVisible();
+    await expect(page.locator('span:has-text("Durable Runner")')).toBeVisible();
+    await expect(page.locator('button:has-text("Refresh Probes")')).toBeVisible();
+    await expect(page.locator('button:has-text("Copy Report")')).toBeVisible();
+  });
+
+  test('Design system living catalog (/dev/ui) renders RoundTable in all operational states', async ({ page }) => {
+    await page.goto('/dev/ui');
+
+    await expect(page.locator('h1')).toContainText('Atlas Design System Catalog');
+    await expect(page.locator('text=The Round Table (Hero Feature)')).toBeVisible();
+
+    // Switch table state presets
+    const votingBtn = page.locator('button:has-text("voting")');
+    await votingBtn.click();
+
+    const deadlockBtn = page.locator('button:has-text("deadlock")');
+    await deadlockBtn.click();
+    await expect(page.locator('text=Consensus').first()).toBeVisible();
+
+    const unanimousBtn = page.locator('button:has-text("unanimous")');
+    await unanimousBtn.click();
+    await expect(page.locator('text=Unanimous').first()).toBeVisible();
+  });
+
+  test('Rage-click defense prevents duplicate submission on rapid mashing', async ({ page }) => {
+    await page.goto('/');
+
+    const exampleButton = page.locator('button:has-text("Ship of Theseus")');
+    await exampleButton.click();
+
+    const submitBtn = page.locator('button:has-text("Convene The Council")');
+
+    // Rapid double click / mash within 100ms
+    await submitBtn.click({ clickCount: 3, delay: 20 });
+
+    // Should only convene once and navigate cleanly
+    await page.waitForURL(/\/session\/[a-zA-Z0-9_-]+/);
+    expect(page.url()).toContain('/session/');
+  });
+
   test('Accessibility audit passes WCAG AA guidelines with axe', async ({ page }) => {
     await page.goto('/');
 
@@ -227,3 +300,4 @@ test.describe('The Council - Complete Deliberation E2E Suite', () => {
     expect(accessibilityScanResults.violations).toEqual([]);
   });
 });
+

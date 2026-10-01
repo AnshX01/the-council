@@ -115,5 +115,72 @@
 ---
 
 ## Phase 3 — Durable Engine & API v1 (Wave 2 continued)
-*(Underway: API v1 routes, resumable SSE with Last-Event-ID, OpenAPI 3.1 spec, contract tests, security guard, Gemini provider hardening)*
+
+### 3.1 REST API v1 Routes
+- Implemented `src/app/api/v1/sessions/route.ts`: List sessions with pagination and search, create session with budget checks and idempotency key deduplication.
+- Implemented `src/app/api/v1/sessions/[id]/route.ts`: Retrieve normalized session with committed events, patch metadata, soft-delete.
+- Implemented `src/app/api/v1/sessions/[id]/stream/route.ts`: Resumable SSE streaming with `Last-Event-ID` and `?after=seq` replay from SQLite before live EventBus tailing.
+- Implemented `src/app/api/v1/sessions/[id]/cancel/route.ts`: Immediate cancellation of running background deliberation.
+- Implemented `src/app/api/v1/sessions/[id]/rerun/route.ts`: Re-convene session with identical parameters and fresh session ID.
+- Implemented `src/app/api/v1/sessions/[id]/export/route.ts`: Export deliberation to Markdown, JSON, or plaintext.
+- Implemented `src/app/api/v1/settings/route.ts`: Stored settings management.
+- Implemented `src/app/api/v1/settings/test-key/route.ts`: Safe API key validation without echoing secrets.
+- Implemented `src/app/api/v1/usage/route.ts`: Personal token spend ledger, headroom calculation, and spend cap enforcement.
+- Implemented `src/app/api/v1/health/live/route.ts` & `src/app/api/v1/health/ready/route.ts`: Liveness and readiness health probes with SQLite check.
+
+### 3.2 Resilience & Provider Hardening
+- Implemented `src/lib/providers/circuitBreaker.ts`: Circuit breaker pattern with CLOSED, OPEN, HALF_OPEN states and automatic fallback.
+- Implemented `src/lib/council/sensitiveTopics.ts`: Automated sensitive topic safety pre-screening.
+- Produced `docs/openapi.yaml`: Comprehensive OpenAPI 3.1 specification.
+- Tests created: `tests/integration/apiV1.test.ts` (16/16 passed), `tests/integration/contract.test.ts` (3/3 passed), `tests/unit/circuitBreaker.test.ts` (4/4 passed).
+
+---
+
+## Phase 4 — Atlas Design System & The Round Table (Wave 3)
+
+### 4.1 Seating Geometry & Spatial Mathematics
+- Implemented `src/lib/council/geometry.ts`: Circular trigonometry engine positioning Seat 0 (The Moderator) at 12 o'clock (0° / -π/2), distributing 8 voting members clockwise, computing smooth SVG quadratic Bézier curves (`Q` control points) for interaction arcs, and calculating radial label angles.
+- Unit tests: `tests/unit/geometry.test.ts` (6/6 passed).
+
+### 4.2 The Round Table (Hero Feature)
+- Implemented `src/components/council/RoundTable/RoundTable.tsx`: Full interactive SVG and DOM circular round table with 9 seated personas, live SVG interaction arcs (AGREE in emerald, CHALLENGE in crimson, CONCEDE in amber), animated convergence ring, confidence rings, delta shift chips, ballot chips, accessible keyboard rotation (arrow keys), and accessible Grid List toggle.
+- Created subcomponents: `SeatNode.tsx`, `InteractionArc.tsx`, `VerdictSeal.tsx`, `PersonaDrawer.tsx`, `ReplayScrubber.tsx`.
+
+### 4.3 Atlas Components & Application Shell
+- Implemented `src/components/layout/CommandPalette.tsx`: Global Ctrl+K / Cmd+K search palette with instant keyboard navigation, category grouping, and action execution.
+- Implemented `src/components/layout/OnboardingWizard.tsx`: Step-by-step Atlas-style setup modal.
+- Implemented `src/components/ui/OfflineBanner.tsx`: Offline network status detector.
+- Implemented deliberation UI: `QuestionComposer.tsx`, `PhaseStepper.tsx`, `TranscriptStream.tsx`, `TrajectoryChart.tsx`, `FinalVerdictCard.tsx`.
+- Implemented full pages:
+  - `/history` (`src/app/history/page.tsx`): Archive with search, status filters, and rerun shortcuts.
+  - `/settings` (`src/app/settings/page.tsx`): Gemini API key tester, model picker, personal spend headroom meter.
+  - `/diagnostics` (`src/app/diagnostics/page.tsx`): Live SQLite WAL inspector, background runner probes, and exportable report.
+  - `/dev/ui` (`src/app/dev/ui/page.tsx`): Design system living catalog displaying RoundTable in all operational states.
+  - `/c/[id]` & `/session/[id]`: Active Deliberation Chamber live view with real-time SSE stream.
+
+---
+
+## Phase 5 & 6 — Testing, Chaos Engineering & Red Team Hardening (Wave 4 & 5)
+
+### 5.1 Chaos & Fault Injection
+- Implemented `tests/integration/chaos.test.ts` (4/4 passed):
+  - Injected transient SQLite locks and database busy states.
+  - Simulated network aborts and reconnection mid-deliberation.
+  - Verified monotonic event sourcing invariants under crash/restart.
+  - Confirmed prompt cancellation cleanly shuts down engine without orphan processes.
+
+### 5.2 Red Team Hardening & Local Security
+- Neutralized adversarial prompt injection payloads (`tests/unit/adversarial.test.ts` and `adversarialInjection.test.ts` - 14/14 passed).
+- Enforced strict Origin / Host localhost-only validation (`tests/unit/securityGuard.test.ts` - 4/4 passed).
+- Verified zero bundle leakage of server secrets.
+- Enforced Content Security Policy (CSP), X-Frame-Options, X-Content-Type-Options headers.
+
+### 5.3 Final Verification Gate (100% Green)
+- **TypeScript:** `npm run typecheck` passed (0 errors).
+- **ESLint:** `npm run lint` passed (0 errors, 0 warnings).
+- **Production Build:** `npm run build` passed (all 14 routes statically generated / dynamically served).
+- **Vitest Suites:** 21 test files, 143 passed, 1 skipped, 0 failed.
+- **Golden Characterization Invariants:** 6/6 passed (invariants strictly preserved).
+- **Playwright E2E Suites:** 28 tests across Chromium and Mobile Chrome: 28/28 passed (100% green).
+- **DevOps Launchers:** `council.ps1`, `council.bat`, and `npm run` scripts verified.
 

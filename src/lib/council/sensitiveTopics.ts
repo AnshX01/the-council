@@ -97,3 +97,14 @@ export function assessTopicSensitivity(query: string): SensitiveTopicAssessment 
     notice: null,
   };
 }
+
+export function checkSensitiveTopic(query: string) {
+  const result = assessTopicSensitivity(query);
+  return {
+    isSensitive: result.isSensitive,
+    category: result.category,
+    advisoryMessage: result.notice,
+    resources: result.resources,
+  };
+}
+

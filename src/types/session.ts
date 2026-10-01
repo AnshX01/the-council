@@ -199,6 +199,7 @@ export interface FinalVerdict {
 export interface DeliberationSession {
   sessionId: string;
   rawQuery: string;
+  status?: 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
   options: SessionOptions;
   currentPhase: DeliberationPhase;
   currentCrossExamRound: number;

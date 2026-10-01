@@ -56,9 +56,9 @@ export function apiSuccessResponse<T>(
   status = 200,
   requestId = `req_${Date.now().toString(36)}`,
   headers: Record<string, string> = {}
-): NextResponse<{ data: T; requestId: string }> {
+): NextResponse<{ ok: boolean; data: T; requestId: string }> {
   return NextResponse.json(
-    { data, requestId },
+    { ok: true, data, requestId },
     {
       status,
       headers: {

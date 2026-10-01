@@ -1,14 +1,10 @@
 import type { Metadata } from 'next';
-import { Cinzel, Inter } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { Navbar } from '@/components/Navbar';
 import { ToastProvider } from '@/components/ui/Toast';
-
-const cinzel = Cinzel({
-  subsets: ['latin'],
-  variable: '--font-cinzel',
-  display: 'swap',
-});
+import { CommandPalette } from '@/components/layout/CommandPalette';
+import { OfflineBanner } from '@/components/ui/OfflineBanner';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -31,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`dark ${cinzel.variable} ${inter.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`dark ${inter.variable}`} suppressHydrationWarning>
       <body className="min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500/30 selection:text-indigo-900 dark:selection:text-indigo-200 relative">
         {/* Soft Ambient Background Mesh Behind Glass Surfaces */}
         <div className="ambient-background" aria-hidden="true">
@@ -40,7 +36,10 @@ export default function RootLayout({
           <div className="ambient-orb-3" />
         </div>
 
+        <OfflineBanner />
+
         <ToastProvider>
+          <CommandPalette />
           <div className="relative z-10 flex flex-col min-h-screen">
             <Navbar />
             <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">

@@ -23,6 +23,7 @@ export type CouncilEventType =
 
 export interface BaseSSEEvent<T extends CouncilEventType, P> {
   id?: string;
+  seq?: number;
   event: T;
   sessionId: string;
   timestamp: string;

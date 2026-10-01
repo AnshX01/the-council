@@ -151,6 +151,7 @@ export async function POST(req: NextRequest) {
   return apiSuccessResponse(
     {
       session,
+      sessionId,
       streamUrl: `/api/v1/sessions/${sessionId}/stream`,
     },
     201,
