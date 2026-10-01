@@ -78,6 +78,67 @@ export const PERSONA_MAP: Readonly<Record<PersonaId, PersonaProfile>> = {
 };
 
 /**
+ * Canonical alias map: normalizes LLM-returned camelCase / variant spellings
+ * to the correct snake_case PersonaId used throughout the system.
+ * The LLM occasionally emits "systemsThinker", "systems thinker", etc.
+ */
+const PERSONA_ALIAS_MAP: Readonly<Record<string, PersonaId>> = {
+  // canonical pass-through
+  moderator: 'moderator',
+  skeptic: 'skeptic',
+  optimist: 'optimist',
+  ethicist: 'ethicist',
+  pragmatist: 'pragmatist',
+  systems_thinker: 'systems_thinker',
+  historian: 'historian',
+  humanist: 'humanist',
+  contrarian: 'contrarian',
+  // camelCase variants the LLM may emit
+  systemsthinker: 'systems_thinker',
+  systemsThinker: 'systems_thinker',
+  systems_Thinker: 'systems_thinker',
+  'systems thinker': 'systems_thinker',
+  the_systems_thinker: 'systems_thinker',
+  theskeptic: 'skeptic',
+  theSkeptic: 'skeptic',
+  theoptimist: 'optimist',
+  theOptimist: 'optimist',
+  theethicist: 'ethicist',
+  theEthicist: 'ethicist',
+  thepragmatist: 'pragmatist',
+  thePragmatist: 'pragmatist',
+  thehistorian: 'historian',
+  theHistorian: 'historian',
+  thehumanist: 'humanist',
+  theHumanist: 'humanist',
+  thecontrarian: 'contrarian',
+  theContrarian: 'contrarian',
+};
+
+/**
+ * Normalizes an LLM-returned persona ID string to the canonical PersonaId.
+ * Returns null if the ID cannot be resolved.
+ */
+export function normalizePersonaId(raw: string): PersonaId | null {
+  if (!raw) return null;
+  // 1. Direct lookup (handles canonical + registered aliases)
+  const direct = PERSONA_ALIAS_MAP[raw];
+  if (direct) return direct;
+  // 2. Case-insensitive + strip leading "the" prefix
+  const lower = raw.toLowerCase().replace(/^the[-_\s]?/, '').replace(/[-\s]/g, '_');
+  const indirect = PERSONA_ALIAS_MAP[lower] ?? (PERSONA_MAP[lower as PersonaId] ? lower as PersonaId : null);
+  if (indirect) return indirect;
+  // 3. Slug: convert camelCase → snake_case then look up
+  const slug = raw
+    .replace(/([A-Z])/g, '_$1')
+    .toLowerCase()
+    .replace(/^_/, '')
+    .replace(/^the[-_\s]?/, '')
+    .replace(/[-\s]+/g, '_');
+  return PERSONA_MAP[slug as PersonaId] ? (slug as PersonaId) : null;
+}
+
+/**
  * Retrieves a persona profile by its unique ID.
  * Throws an Error if the provided ID is invalid.
  */
@@ -87,6 +148,20 @@ export function getPersonaById(id: PersonaId): PersonaProfile {
     throw new Error(`Unknown persona ID: '${id}'. Expected one of: ${Object.keys(PERSONA_MAP).join(', ')}`);
   }
   return profile;
+}
+
+/**
+ * Safe (non-throwing) variant of getPersonaById.
+ * Returns null for unknown or malformed IDs instead of throwing.
+ */
+export function findPersonaById(id: string | null | undefined): PersonaProfile | null {
+  if (!id) return null;
+  // Try direct lookup first
+  const direct = PERSONA_MAP[id as PersonaId];
+  if (direct) return direct;
+  // Try normalization
+  const normalized = normalizePersonaId(id);
+  return normalized ? (PERSONA_MAP[normalized] ?? null) : null;
 }
 
 /**

@@ -17,24 +17,52 @@ export type DeliberationPhase =
   | 'FAILED';
 
 export interface SessionOptions {
-  maxCrossExamRounds: number;      // Default: 3
+  maxCrossExamRounds: number;      // Default: 3; max: 8. Runs until unanimous outcome agreement OR ceiling.
   maxRatificationCycles: number;   // Default: 2 (Initial + up to 2 revisions)
   concurrencyLimit: number;        // Default: 4 concurrent LLM requests
   callBudget: number;              // Default: 80 total LLM calls
-  sessionTimeoutMs: number;        // Default: 300_000 (5 minutes)
+  sessionTimeoutMs: number;        // Default: 600_000 (10 minutes)
   mockMode: boolean;               // Default: false
 }
 
 export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
   maxCrossExamRounds: 3,
-  maxRatificationCycles: 2,
+  maxRatificationCycles: 5,
   concurrencyLimit: 4,
-  callBudget: 80,
-  sessionTimeoutMs: 300_000,
+  callBudget: 120,
+  sessionTimeoutMs: 720_000,
   mockMode: false,
 };
 
+export type TaskType = 'DETERMINISTIC' | 'JUDGMENT';
+
+export interface ClaimVerificationRow {
+  claim: string;
+  evaluatedTruthValue: boolean;
+  expectedTruthValue: boolean;
+  passed: boolean;
+}
+
+export interface VerifierCandidateSolution {
+  killer?: string;
+  types?: Record<string, string>;
+  assignment?: Record<string, any>;
+  explanation?: string;
+  proof?: string;
+}
+
+export interface VerifierResult {
+  taskType: TaskType;
+  solutionCount: number;
+  solutions: VerifierCandidateSolution[];
+  status: 'PASS' | 'FAIL' | 'AMBIGUOUS' | 'ERROR';
+  executionDetails: string;
+  agreed: boolean;
+  timestamp: string;
+}
+
 export interface FramingArtifact {
+  taskType?: TaskType;
   restatedQuestion: string;
   coreDecisions: string[];
   fundamentalAssumptions: string[];
@@ -48,6 +76,10 @@ export interface OpeningPosition {
   detailedReasoning: string;
   confidenceScore: number;  // 0 - 100
   falsificationCondition: string; // "What would change my mind"
+  claimVerificationTable?: ClaimVerificationRow[];
+  contradictionsFound?: string[];
+  selfCheck?: string;
+  verifierResultRef?: string;
   timestamp: string;
 }
 
@@ -57,6 +89,7 @@ export interface PersonaResponse {
   targetPersonaId: PersonaId;
   action: CrossExamAction;
   critiqueOrSupport: string;
+  citedStatementOrLine?: string;
 }
 
 export interface ShiftRecord {
@@ -81,6 +114,10 @@ export interface CrossExamTurn {
   shiftRecord: ShiftRecord | null;
   shiftExplanation?: string;
   whatChanged?: string;
+  claimVerificationTable?: ClaimVerificationRow[];
+  contradictionsFound?: string[];
+  selfCheck?: string;
+  verifierResultRef?: string;
   timestamp: string;
 }
 
@@ -98,6 +135,8 @@ export interface ConvergenceDraft {
   alignmentScore: number;     // 0 - 100
   varianceScore: number;      // Variance across member confidences
   memberAgreementScores: Partial<Record<PersonaId, number>>; // 0 - 100
+  /** True when the moderator determines all (or near-all) members agree on the same concrete named outcome */
+  outcomeConsensusReached: boolean;
   timestamp: string;
 }
 
@@ -113,6 +152,9 @@ export interface RatificationVote {
   amendmentText?: string;
   objectionReason?: string;
   closingComment?: string;
+  claimVerificationTable?: ClaimVerificationRow[];
+  contradictionsFound?: string[];
+  verifierResultRef?: string;
   timestamp: string;
 }
 
@@ -140,6 +182,7 @@ export interface SurvivingObjection {
 export interface FinalVerdict {
   status: VerdictStatus;
   isUnanimous: boolean;
+  verdictOneLiner: string; // Single definitive sentence — the bottom-line answer
   actionableConclusion: string; // Plain language, concrete directives
   keySupportingReasons: string[];
   criticalCaveatsAndRisks: string[];
@@ -150,6 +193,7 @@ export interface FinalVerdict {
   totalCallsUsed: number;
   durationMs: number;
   completedAt: string;
+  verifierResult?: VerifierResult | null;
 }
 
 export interface DeliberationSession {
@@ -162,6 +206,8 @@ export interface DeliberationSession {
   memberStatuses: Record<PersonaId, PersonaStatus>;
 
   // Artifacts accumulated per phase
+  taskType?: TaskType;
+  verifierResult?: VerifierResult | null;
   framing: FramingArtifact | null;
   openingPositions: Partial<Record<PersonaId, OpeningPosition>>;
   crossExamRounds: CrossExamRound[];

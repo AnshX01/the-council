@@ -7,11 +7,29 @@
 
 import { z } from 'zod';
 import { PersonaId, PERSONA_IDS } from './persona';
+// normalizePersonaId is imported here (not from @/types to avoid circular dep)
+// It lives in personas.ts which re-exports from @/types/persona
+import { normalizePersonaId } from '@/lib/council/personas';
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 0. Task Type Classifier Schema
+// ---------------------------------------------------------------------------
+export const TaskTypeSchema = z.enum(['DETERMINISTIC', 'JUDGMENT']);
+export type TaskType = z.infer<typeof TaskTypeSchema>;
+
+export const ClaimVerificationRowSchema = z.object({
+  claim: z.string().describe('The claim, statement, or condition being checked'),
+  evaluatedTruthValue: z.boolean().describe('The evaluated truth value (true/false) under proposed answer'),
+  expectedTruthValue: z.boolean().describe('The truth value required by the assigned type/conditions'),
+  passed: z.boolean().describe('True if evaluatedTruthValue matches expectedTruthValue'),
+});
+export type ClaimVerificationRow = z.infer<typeof ClaimVerificationRowSchema>;
+
 // 1. Moderator Framing Schema (Phase 0)
 // ---------------------------------------------------------------------------
 export const BaseFramingSchema = z.object({
+  taskType: TaskTypeSchema.default('JUDGMENT').describe('DETERMINISTIC (logic, math, puzzles, verifiable facts) or JUDGMENT (ethics, policy, strategy, opinion)'),
   restatedQuestion: z
     .string()
     .min(1, 'Restated question cannot be empty')
@@ -35,7 +53,13 @@ export type FramingPayload = z.infer<typeof BaseFramingSchema>;
 export const FramingSchema: z.ZodType<FramingPayload, any, any> = z.preprocess(
   (raw: any) => {
     if (!raw || typeof raw !== 'object') return raw;
+    let taskType: TaskType = 'JUDGMENT';
+    const rawType = (raw.taskType || raw.type || '').toString().toUpperCase();
+    if (rawType.includes('DETERMINISTIC') || rawType.includes('LOGIC') || rawType.includes('MATH') || rawType.includes('PUZZLE')) {
+      taskType = 'DETERMINISTIC';
+    }
     return {
+      taskType,
       restatedQuestion: raw.restatedQuestion || raw.question || raw.restatement || '',
       coreDecisions:
         Array.isArray(raw.coreDecisions) && raw.coreDecisions.length > 0
@@ -80,6 +104,22 @@ export const BaseOpeningPositionSchema = z.object({
     .string()
     .min(1, 'Falsification condition cannot be empty')
     .describe('Specific evidence or proof that would change this persona mind'),
+  claimVerificationTable: z
+    .array(ClaimVerificationRowSchema)
+    .optional()
+    .describe('Per-claim check table (statement -> truth value under proposed answer -> pass/fail)'),
+  contradictionsFound: z
+    .array(z.string())
+    .optional()
+    .describe('Contradictions detected in the proposed position or claims'),
+  selfCheck: z
+    .string()
+    .optional()
+    .describe('Structured self-check verifying no internal contradictions'),
+  verifierResultRef: z
+    .string()
+    .optional()
+    .describe('ID or reference of verifier ground truth result if verified'),
 });
 
 export type OpeningPositionPayload = z.infer<typeof BaseOpeningPositionSchema>;
@@ -107,6 +147,20 @@ export const OpeningPositionSchema: z.ZodType<OpeningPositionPayload, any, any> 
         raw.falsification ||
         raw.counterEvidence ||
         'Empirical evidence demonstrating catastrophic divergence or counterproductive outcomes.',
+      claimVerificationTable: Array.isArray(raw.claimVerificationTable)
+        ? raw.claimVerificationTable
+        : Array.isArray(raw.claimVerification)
+        ? raw.claimVerification
+        : Array.isArray(raw.claims)
+        ? raw.claims
+        : undefined,
+      contradictionsFound: Array.isArray(raw.contradictionsFound)
+        ? raw.contradictionsFound
+        : Array.isArray(raw.contradictions)
+        ? raw.contradictions
+        : undefined,
+      selfCheck: raw.selfCheck || raw.self_check || undefined,
+      verifierResultRef: raw.verifierResultRef || raw.verifierRef || undefined,
     };
   },
   BaseOpeningPositionSchema
@@ -128,6 +182,10 @@ export const BasePeerResponseSchema = z.object({
     .string()
     .min(1, 'Critique or support statement cannot be empty')
     .describe('Direct philosophical challenge, agreement, or concession'),
+  citedStatementOrLine: z
+    .string()
+    .optional()
+    .describe('Specific statement, constraint, or line cited in the peer critique/support'),
 });
 
 export type PeerResponsePayload = z.infer<typeof BasePeerResponseSchema>;
@@ -146,8 +204,16 @@ export const PeerResponseSchema: z.ZodType<PeerResponsePayload, any, any> = z.pr
     )
       action = 'CHALLENGE';
 
+    // Normalize the target persona ID: the LLM may return camelCase or variant
+    // spellings (e.g. "systemsThinker", "theContrarian"). Canonicalize them here
+    // at the single entry-point before they reach any typed lookup.
+    const rawTargetId: string =
+      raw.targetPersonaId || raw.personaId || raw.target || 'skeptic';
+    const normalizedTargetId: string =
+      normalizePersonaId(rawTargetId) ?? rawTargetId;
+
     return {
-      targetPersonaId: raw.targetPersonaId || raw.personaId || raw.target || 'skeptic',
+      targetPersonaId: normalizedTargetId,
       action,
       critiqueOrSupport:
         raw.critiqueOrSupport ||
@@ -156,6 +222,8 @@ export const PeerResponseSchema: z.ZodType<PeerResponsePayload, any, any> = z.pr
         raw.comment ||
         raw.response ||
         'Dialectical critique or endorsement provided.',
+      citedStatementOrLine:
+        raw.citedStatementOrLine || raw.citedStatement || raw.citation || undefined,
     };
   },
   BasePeerResponseSchema
@@ -183,6 +251,22 @@ export const BaseCrossExamTurnSchema = z.object({
     .string()
     .min(1, 'whatChanged description cannot be empty')
     .describe('Concise delta of perspective from the previous round'),
+  claimVerificationTable: z
+    .array(ClaimVerificationRowSchema)
+    .optional()
+    .describe('Per-claim check table for the refined position'),
+  contradictionsFound: z
+    .array(z.string())
+    .optional()
+    .describe('Any contradictions found in leading answers or proposed position'),
+  selfCheck: z
+    .string()
+    .optional()
+    .describe('Structured self-check verifying consistency with verified constraints'),
+  verifierResultRef: z
+    .string()
+    .optional()
+    .describe('ID or reference of verifier ground truth result if verified'),
 });
 
 export type CrossExamTurnPayload = z.infer<typeof BaseCrossExamTurnSchema>;
@@ -239,6 +323,20 @@ export const CrossExamTurnSchema: z.ZodType<CrossExamTurnPayload, any, any> = z.
         raw.whatChanged ||
         raw.delta ||
         'Refined conditions and calibrated confidence score.',
+      claimVerificationTable: Array.isArray(raw.claimVerificationTable)
+        ? raw.claimVerificationTable
+        : Array.isArray(raw.claimVerification)
+        ? raw.claimVerification
+        : Array.isArray(raw.claims)
+        ? raw.claims
+        : undefined,
+      contradictionsFound: Array.isArray(raw.contradictionsFound)
+        ? raw.contradictionsFound
+        : Array.isArray(raw.contradictions)
+        ? raw.contradictions
+        : undefined,
+      selfCheck: raw.selfCheck || raw.self_check || undefined,
+      verifierResultRef: raw.verifierResultRef || raw.verifierRef || undefined,
     };
   },
   BaseCrossExamTurnSchema
@@ -263,6 +361,9 @@ export const BaseConvergenceCheckSchema = z.object({
   keyAlignmentPoints: z
     .array(z.string())
     .describe('Core principles or conclusions all or most members endorse'),
+  outcomeConsensusReached: z
+    .boolean()
+    .describe('True ONLY when every active member names the same concrete outcome entity (same patient, yes/no, same action). False if ANY member names a different outcome.'),
 });
 
 export type ConvergenceCheckPayload = z.infer<typeof BaseConvergenceCheckSchema>;
@@ -290,6 +391,10 @@ export const ConvergenceCheckSchema: z.ZodType<ConvergenceCheckPayload, any, any
         Array.isArray(raw.keyAlignmentPoints) && raw.keyAlignmentPoints.length > 0
           ? raw.keyAlignmentPoints
           : ['Agreement on systematic mitigation and baseline verification'],
+      outcomeConsensusReached:
+        typeof raw.outcomeConsensusReached === 'boolean'
+          ? raw.outcomeConsensusReached
+          : false,
     };
   },
   BaseConvergenceCheckSchema
@@ -324,6 +429,18 @@ export const BaseRatificationVoteSchema = z.object({
     .string()
     .min(1, 'Closing comment cannot be empty')
     .describe('Final remarks on the consensus statement'),
+  claimVerificationTable: z
+    .array(ClaimVerificationRowSchema)
+    .optional()
+    .describe('Per-claim check table for the draft consensus'),
+  contradictionsFound: z
+    .array(z.string())
+    .optional()
+    .describe('Contradictions detected in the draft consensus statement'),
+  verifierResultRef: z
+    .string()
+    .optional()
+    .describe('ID or reference of verifier ground truth result if verified'),
 });
 
 export type RatificationVotePayload = z.infer<typeof BaseRatificationVoteSchema>;
@@ -346,6 +463,19 @@ export const RatificationVoteSchema: z.ZodType<RatificationVotePayload, any, any
         raw.comment ||
         raw.summary ||
         `Persona vote recorded as ${vote}.`,
+      claimVerificationTable: Array.isArray(raw.claimVerificationTable)
+        ? raw.claimVerificationTable
+        : Array.isArray(raw.claimVerification)
+        ? raw.claimVerification
+        : Array.isArray(raw.claims)
+        ? raw.claims
+        : undefined,
+      contradictionsFound: Array.isArray(raw.contradictionsFound)
+        ? raw.contradictionsFound
+        : Array.isArray(raw.contradictions)
+        ? raw.contradictions
+        : undefined,
+      verifierResultRef: raw.verifierResultRef || raw.verifierRef || undefined,
     };
   },
   BaseRatificationVoteSchema
@@ -355,10 +485,14 @@ export const RatificationVoteSchema: z.ZodType<RatificationVotePayload, any, any
 // 6. Final Synthesis Schema (Phase 5)
 // ---------------------------------------------------------------------------
 export const BaseFinalSynthesisSchema = z.object({
+  verdictOneLiner: z
+    .string()
+    .min(1, 'Verdict one-liner cannot be empty')
+    .describe('Single definitive sentence — the council\'s bottom-line answer, max 15 words'),
   unanimousConclusion: z
     .string()
     .min(1, 'Conclusion cannot be empty')
-    .describe('Definitive consensus verdict or structured non-consensus resolution'),
+    .describe('Concise 2-3 sentence paragraph explaining the reasoning behind the verdict'),
   consensusReached: z
     .boolean()
     .describe('True if unanimous agreement was achieved; false if honesty rule activated'),
@@ -381,6 +515,13 @@ export const FinalSynthesisSchema: z.ZodType<FinalSynthesisPayload, any, any> = 
   (raw: any) => {
     if (!raw || typeof raw !== 'object') return raw;
     return {
+      verdictOneLiner:
+        raw.verdictOneLiner ||
+        raw.oneLiner ||
+        raw.headline ||
+        // fallback: first sentence of the conclusion
+        (raw.unanimousConclusion || raw.conclusion || '').split(/[.!?]/)[0]?.trim() + '.' ||
+        'The council has reached its conclusion.',
       unanimousConclusion:
         raw.unanimousConclusion ||
         raw.conclusion ||
@@ -409,11 +550,11 @@ export const FinalSynthesisSchema: z.ZodType<FinalSynthesisPayload, any, any> = 
 // 7. Session Options & Creation Request Schemas
 // ---------------------------------------------------------------------------
 export const SessionOptionsSchema = z.object({
-  maxCrossExamRounds: z.number().int().min(1).max(5).default(3),
+  maxCrossExamRounds: z.number().int().min(1).max(8).default(3),
   maxRatificationCycles: z.number().int().min(1).max(3).default(2),
   concurrencyLimit: z.number().int().min(1).max(8).default(4),
   callBudget: z.number().int().min(20).max(150).default(80),
-  sessionTimeoutMs: z.number().int().min(30000).max(600000).default(300000),
+  sessionTimeoutMs: z.number().int().min(30000).max(1800000).default(600000),
   mockMode: z.boolean().default(false),
   apiKey: z.string().optional(),
   modelId: z.string().optional(),

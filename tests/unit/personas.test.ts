@@ -5,6 +5,8 @@ import {
   MODERATOR,
   PERSONA_MAP,
   getPersonaById,
+  findPersonaById,
+  normalizePersonaId,
   getAllPersonas,
   getCouncilMembers,
   getModerator,
@@ -86,5 +88,48 @@ describe('Council Personas Configuration', () => {
   it('should throw an error when looking up an invalid persona ID', () => {
     // @ts-expect-error Testing invalid id runtime guard
     expect(() => getPersonaById('invalid_id')).toThrow(/Unknown persona ID/);
+  });
+
+  it('normalizePersonaId: should canonicalize camelCase and variant LLM outputs', () => {
+    // Exact canonical IDs pass through unchanged
+    expect(normalizePersonaId('systems_thinker')).toBe('systems_thinker');
+    expect(normalizePersonaId('skeptic')).toBe('skeptic');
+    expect(normalizePersonaId('contrarian')).toBe('contrarian');
+
+    // camelCase variants the LLM may emit
+    expect(normalizePersonaId('systemsThinker')).toBe('systems_thinker');
+    expect(normalizePersonaId('systemsthinker')).toBe('systems_thinker');
+    expect(normalizePersonaId('systems_Thinker')).toBe('systems_thinker');
+    expect(normalizePersonaId('systems thinker')).toBe('systems_thinker');
+
+    // "the" prefix variants
+    expect(normalizePersonaId('theContrarian')).toBe('contrarian');
+    expect(normalizePersonaId('theSkeptic')).toBe('skeptic');
+    expect(normalizePersonaId('theOptimist')).toBe('optimist');
+    expect(normalizePersonaId('the_systems_thinker')).toBe('systems_thinker');
+    expect(normalizePersonaId('theHistorian')).toBe('historian');
+    expect(normalizePersonaId('theHumanist')).toBe('humanist');
+    expect(normalizePersonaId('theEthicist')).toBe('ethicist');
+    expect(normalizePersonaId('thePragmatist')).toBe('pragmatist');
+
+    // Unknown IDs return null
+    expect(normalizePersonaId('completely_unknown')).toBeNull();
+    expect(normalizePersonaId('')).toBeNull();
+  });
+
+  it('findPersonaById: should return persona or null without throwing', () => {
+    // Canonical IDs resolve correctly
+    expect(findPersonaById('systems_thinker')?.id).toBe('systems_thinker');
+    expect(findPersonaById('contrarian')?.id).toBe('contrarian');
+
+    // camelCase LLM output resolves without throwing
+    expect(findPersonaById('systemsThinker')?.id).toBe('systems_thinker');
+    expect(findPersonaById('theContrarian')?.id).toBe('contrarian');
+
+    // Unknown IDs return null (no throw)
+    expect(findPersonaById('invalid_id')).toBeNull();
+    expect(findPersonaById(null)).toBeNull();
+    expect(findPersonaById(undefined)).toBeNull();
+    expect(findPersonaById('')).toBeNull();
   });
 });

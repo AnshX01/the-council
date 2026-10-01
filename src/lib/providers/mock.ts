@@ -182,6 +182,7 @@ export class MockProvider implements LLMProvider {
     if (prompt.includes('restatedQuestion') || prompt.includes('Restate the question')) {
       if (this.isTheseusTopic(prompt)) {
         const framing: FramingPayload = {
+          taskType: 'JUDGMENT',
           restatedQuestion:
             'In the Ship of Theseus paradox, does the authentic identity of an entity persist through continuous gradual material replacement and unbroken history, or does it adhere strictly to its original physical matter?',
           coreDecisions: [
@@ -201,6 +202,7 @@ export class MockProvider implements LLMProvider {
       }
 
       const framing: FramingPayload = {
+        taskType: 'JUDGMENT',
         restatedQuestion:
           'Should the decision-maker proceed with the proposed commitment under conditions of operational uncertainty and long-term consequences?',
         coreDecisions: [
@@ -498,6 +500,7 @@ export class MockProvider implements LLMProvider {
           'The maintained sailing vessel is recognized as the continuous Ship of Theseus',
           'The reassembled ship of discarded planks is formally recognized as an authentic historical material reconstruction',
         ],
+        outcomeConsensusReached: !isDeadlock,
       };
     }
 
@@ -513,6 +516,7 @@ export class MockProvider implements LLMProvider {
         'Mandatory transparent stakeholder reporting and moral safeguards',
         'Establishment of quantitative thresholds for course reversal',
       ],
+      outcomeConsensusReached: !isDeadlock,
     };
   }
 
@@ -531,18 +535,19 @@ export class MockProvider implements LLMProvider {
       };
     }
 
-    // Objection then converge scenario
+    // Objection then converge scenario: contrarian hard-OBJECTs on cycle 1,
+    // then signs off on cycle 2 (after the moderator revision addresses the concern).
     if (this.config.scenario === 'OBJECTION_THEN_CONVERGE' && isContrarian) {
       const currentCount = (this.ratificationCycleCounts['contrarian'] || 0) + 1;
       this.ratificationCycleCounts['contrarian'] = currentCount;
 
       if (currentCount === 1) {
         return {
-          vote: 'SIGN_OFF_WITH_AMENDMENT',
-          amendmentSuggestion:
-            'Must add an irrevocable kill-switch trigger if first-quarter variance exceeds 10%.',
+          vote: 'OBJECT',
+          objectionReason:
+            'The current draft lacks an irrevocable kill-switch trigger. Without it, tail-risk remains unhedged.',
           closingComment:
-            'Conditionally supportive, provided the amendment is explicitly codified.',
+            'I formally object until the kill-switch clause is added.',
         };
       }
     }
@@ -561,6 +566,7 @@ export class MockProvider implements LLMProvider {
 
     if (isDeadlock) {
       return {
+        verdictOneLiner: 'Proceed with extreme caution — majority endorses rollout, one dissent unresolved.',
         unanimousConclusion:
           'Consensus not fully reached. While a majority of seven council members endorse a phased rollout, The Contrarian registered an unyielding dissent regarding unhedged catastrophic tail-risk.',
         consensusReached: false,
@@ -581,6 +587,7 @@ export class MockProvider implements LLMProvider {
 
     if (isTheseus) {
       return {
+        verdictOneLiner: 'The maintained sailing ship is the real Ship of Theseus — continuity defines identity.',
         unanimousConclusion:
           'The Council unanimously recommends recognizing the continuously maintained sailing ship as the authentic Ship of Theseus. Identity is grounded in continuous form, unbroken historical purpose, and systemic organization rather than static physical matter; the reassembled original planks constitute a distinct historical reconstruction.',
         consensusReached: true,
@@ -602,6 +609,7 @@ export class MockProvider implements LLMProvider {
     }
 
     return {
+      verdictOneLiner: 'Proceed with a phased 3-stage rollout — pilot first, audit at day 45, then scale.',
       unanimousConclusion:
         'The Council unanimously recommends proceeding via a disciplined 3-phase rollout: pilot testing with 10% exposure, rigorous ethical audit at day 45, and scale-up only upon achieving verified milestone stability.',
       consensusReached: true,

@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const TEST_PORT = process.env.TEST_PORT || '3100';
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60 * 1000,
@@ -11,7 +13,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: `http://localhost:${TEST_PORT}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -26,11 +28,12 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run start',
-    url: 'http://localhost:3000/api/health',
+    command: `npx next start -p ${TEST_PORT}`,
+    url: `http://localhost:${TEST_PORT}/api/health`,
     reuseExistingServer: false,
     timeout: 60 * 1000,
     env: {
+      PORT: TEST_PORT,
       USE_MOCK_PROVIDER: 'true',
     },
   },

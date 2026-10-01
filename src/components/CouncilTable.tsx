@@ -20,9 +20,12 @@ import {
   XCircle,
   AlertTriangle,
   MinusCircle,
+  Volume2,
 } from 'lucide-react';
 import { PersonaId } from '@/types/persona';
 import { OpeningPosition, CrossExamRound, RatificationVote } from '@/types/session';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { Badge } from '@/components/ui/Badge';
 
 interface CouncilTableProps {
   memberStatuses: Record<PersonaId, 'active' | 'unavailable'>;
@@ -67,44 +70,49 @@ export function CouncilTable({
     return { isUnavailable, confidence, snippet, vote };
   };
 
+  const isModeratorSpeaking = currentSpeakerId === 'moderator';
+
   return (
-    <div className="w-full">
+    <div className="w-full space-y-3 sm:space-y-4">
       {/* Moderator Bar */}
-      <div className="mb-4">
-        <div
-          onClick={() => onSelectPersona(MODERATOR)}
-          className={`cursor-pointer rounded-xl border p-3 flex items-center justify-between transition-smooth ${
-            currentSpeakerId === 'moderator'
-              ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 ring-1 ring-indigo-500 shadow-sm'
-              : 'border-gray-200/80 dark:border-gray-800/80 bg-white/60 dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-700'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-              <Crown className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-serif font-semibold text-sm text-gray-900 dark:text-gray-100">
-                  {MODERATOR.name}
-                </span>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                  Chair / Non-Voting
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
-                {MODERATOR.title} &bull; Neutral arbiter, convergence evaluator & final scribe
-              </p>
-            </div>
+      <GlassCard
+        onClick={() => onSelectPersona(MODERATOR)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectPersona(MODERATOR)}
+        padded="sm"
+        interactive
+        className={`flex items-center justify-between !rounded-[16px] cursor-pointer transition-all duration-200 ${
+          isModeratorSpeaking
+            ? '!border-indigo-500/70 dark:!border-indigo-400/80 bg-indigo-50/40 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20 shadow-md'
+            : ''
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold border border-indigo-500/20 shrink-0">
+            <Crown className="w-4 h-4" />
           </div>
-          {currentSpeakerId === 'moderator' && (
-            <span className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-indigo-600 animate-ping" />
-              Speaking
-            </span>
-          )}
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-serif font-bold text-sm text-gray-950 dark:text-gray-50">
+                {MODERATOR.name}
+              </span>
+              <Badge variant="neutral" size="xs">
+                Chair &bull; Non-Voting
+              </Badge>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
+              {MODERATOR.title} &bull; Neutral protocol arbiter, convergence measurement, verdict scribe
+            </p>
+          </div>
         </div>
-      </div>
+
+        {isModeratorSpeaking && (
+          <Badge variant="accent" size="sm" dot icon={<Volume2 className="w-3 h-3" />}>
+            Speaking
+          </Badge>
+        )}
+      </GlassCard>
 
       {/* 8 Voting Members Card Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -114,26 +122,28 @@ export function CouncilTable({
           const isSpeaking = currentSpeakerId === member.id;
 
           return (
-            <div
+            <GlassCard
               key={member.id}
               onClick={() => onSelectPersona(member)}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && onSelectPersona(member)}
-              className={`group relative rounded-xl border p-3.5 transition-smooth cursor-pointer flex flex-col justify-between ${
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectPersona(member)}
+              padded="sm"
+              interactive={!isUnavailable}
+              className={`flex flex-col justify-between !rounded-[16px] text-left transition-all duration-200 select-none ${
                 isUnavailable
-                  ? 'opacity-40 border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/20'
+                  ? 'opacity-40 cursor-not-allowed bg-black/5 dark:bg-white/5'
                   : isSpeaking
-                  ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-950/20 shadow-md'
-                  : 'border-gray-200/80 dark:border-gray-800/80 bg-white/70 dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-sm'
+                  ? '!border-indigo-500/80 dark:!border-indigo-400 ring-2 ring-indigo-500/25 shadow-md -translate-y-1'
+                  : ''
               }`}
             >
               {/* Header */}
               <div>
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-start justify-between mb-2.5">
+                  <div className="flex items-center gap-2.5">
                     <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shadow-xs"
+                      className="w-8 h-8 rounded-[10px] flex items-center justify-center text-xs shadow-xs shrink-0"
                       style={{
                         backgroundColor: `${member.colorHex}18`,
                         color: member.colorHex,
@@ -143,43 +153,38 @@ export function CouncilTable({
                       <GlyphComponent className="w-4 h-4" />
                     </div>
                     <div>
-                      <h4 className="font-serif font-semibold text-xs text-gray-900 dark:text-gray-100 leading-tight">
+                      <h4 className="font-serif font-bold text-xs sm:text-sm text-gray-950 dark:text-gray-50 leading-tight">
                         {member.name}
                       </h4>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-400 font-sans block leading-tight">
-                        {member.title}
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 block leading-tight mt-0.5">
+                        {member.archetype}
                       </span>
                     </div>
                   </div>
 
                   {/* Status / Vote Badge */}
                   {isUnavailable ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500 font-mono">
-                      <MinusCircle className="w-3 h-3" />
+                    <Badge variant="neutral" size="xs" icon={<MinusCircle className="w-3 h-3" />}>
                       Offline
-                    </span>
+                    </Badge>
                   ) : vote ? (
                     vote.vote === 'SIGN_OFF' ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                        <CheckCircle2 className="w-3 h-3" />
+                      <Badge variant="success" size="xs" icon={<CheckCircle2 className="w-3 h-3" />}>
                         Signed
-                      </span>
+                      </Badge>
                     ) : vote.vote === 'SIGN_OFF_WITH_AMENDMENT' ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                        <AlertTriangle className="w-3 h-3" />
+                      <Badge variant="warning" size="xs" icon={<AlertTriangle className="w-3 h-3" />}>
                         Amend
-                      </span>
+                      </Badge>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-red-600 dark:text-red-400 font-medium">
-                        <XCircle className="w-3 h-3" />
+                      <Badge variant="danger" size="xs" icon={<XCircle className="w-3 h-3" />}>
                         Dissent
-                      </span>
+                      </Badge>
                     )
                   ) : isSpeaking ? (
-                    <span className="flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold animate-pulse">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-ping" />
+                    <Badge variant="accent" size="xs" dot icon={<Volume2 className="w-3 h-3" />}>
                       Active
-                    </span>
+                    </Badge>
                   ) : null}
                 </div>
 
@@ -190,30 +195,30 @@ export function CouncilTable({
               </div>
 
               {/* Confidence Metric Footer */}
-              <div className="pt-2 border-t border-gray-100 dark:border-gray-800/60 flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase text-gray-500 dark:text-gray-400">
+              <div className="pt-2 border-t border-gray-100 dark:border-white/10 flex items-center justify-between">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 dark:text-gray-500">
                   Confidence
                 </span>
                 {confidence !== null ? (
                   <div className="flex items-center gap-1.5">
-                    <div className="w-16 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                    <div className="w-16 h-1.5 rounded-full bg-gray-200/80 dark:bg-white/10 overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all duration-500"
+                        className="h-full rounded-full transition-all duration-500 ease-out"
                         style={{
                           width: `${confidence}%`,
                           backgroundColor: member.colorHex,
                         }}
                       />
                     </div>
-                    <span className="font-mono text-xs font-semibold text-gray-800 dark:text-gray-200">
+                    <span className="font-mono text-xs font-semibold text-gray-900 dark:text-gray-100">
                       {confidence}%
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[10px] text-gray-400">&mdash;</span>
+                  <span className="text-[10px] text-gray-400 font-mono">&mdash;</span>
                 )}
               </div>
-            </div>
+            </GlassCard>
           );
         })}
       </div>

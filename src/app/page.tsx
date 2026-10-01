@@ -2,19 +2,34 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles, ArrowRight, Shield, Scale, Lightbulb, Users, Compass, ExternalLink, Key, AlertTriangle, CheckCircle } from 'lucide-react';
+import {
+  Sparkles,
+  ArrowRight,
+  Shield,
+  Scale,
+  Compass,
+  Key,
+  AlertTriangle,
+  CheckCircle,
+  Lightbulb,
+  CornerDownLeft,
+} from 'lucide-react';
 import { COUNCIL_MEMBERS, PersonaProfile } from '@/lib/council/personas';
 import { PersonaDetailModal } from '@/components/PersonaDetailModal';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { useToast } from '@/components/ui/Toast';
 
 const EXAMPLE_PROMPTS = [
   {
-    label: 'Ship of Theseus',
-    text: 'Over many years, every wooden plank of a ship is gradually replaced until no original part remains. If the discarded planks are reassembled into a second vessel, which ship is the real Ship of Theseus: physical material or continuous form?',
-  },
-  {
     label: 'Career vs. Family',
     text: 'Should a career professional in their 40s pivot entirely from stable corporate management to a high-paying executive job that requires relocate and 80h weeks away from young family?',
+  },
+  {
+    label: 'Ship of Theseus',
+    text: 'Over many years, every wooden plank of a ship is gradually replaced until no original part remains. If the discarded planks are reassembled into a second vessel, which ship is the real Ship of Theseus: physical material or continuous form?',
   },
   {
     label: 'AI Regulation',
@@ -43,6 +58,7 @@ export default function LandingPage() {
   const [hasKey, setHasKey] = useState(false);
   const [engineModel, setEngineModel] = useState('gemini-2.5-flash');
   const router = useRouter();
+  const { toast } = useToast();
 
   useEffect(() => {
     const storedKey = typeof window !== 'undefined' ? localStorage.getItem('the_council_gemini_api_key') : null;
@@ -64,8 +80,8 @@ export default function LandingPage() {
       });
   }, [isKeyModalOpen]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
     if (!query.trim() || query.trim().length < 10) {
       setError('Please formulate a question of at least 10 characters for the council to deliberate.');
       return;
@@ -77,6 +93,7 @@ export default function LandingPage() {
     try {
       let apiKey: string | undefined;
       let modelId: string | undefined;
+      let maxCrossExamRounds: number | undefined;
 
       if (typeof window !== 'undefined') {
         const stored = localStorage.getItem('the_council_gemini_api_key');
@@ -85,6 +102,11 @@ export default function LandingPage() {
         }
         const m = localStorage.getItem('the_council_gemini_model');
         if (m) modelId = m;
+        const r = localStorage.getItem('the_council_max_rounds');
+        if (r) {
+          const parsedRounds = parseInt(r, 10);
+          if (!isNaN(parsedRounds)) maxCrossExamRounds = Math.min(8, Math.max(1, parsedRounds));
+        }
       }
 
       const res = await fetch('/api/sessions', {
@@ -95,6 +117,7 @@ export default function LandingPage() {
           options: {
             apiKey,
             modelId,
+            maxCrossExamRounds,
           },
         }),
       });
@@ -105,10 +128,20 @@ export default function LandingPage() {
       }
 
       const { sessionId } = await res.json();
+      toast({
+        type: 'info',
+        title: 'Chamber Convened',
+        description: 'Seating the personas and initiating neutral framing...',
+      });
       router.push(`/session/${sessionId}`);
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Please check connection and try again.');
       setIsLoading(false);
+      toast({
+        type: 'error',
+        title: 'Convening Failed',
+        description: err.message || 'Unable to start deliberation session.',
+      });
     }
   };
 
@@ -118,19 +151,20 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[75vh] py-8 sm:py-12">
+    <div className="flex flex-col items-center justify-center min-h-[75vh] py-6 sm:py-10 animate-fade-in">
       {/* Hero Header */}
-      <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-12">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-indigo-200/80 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 text-xs font-medium mb-4">
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Eight Autonomous AI Personas &bull; Adversarial Deliberation &bull; Unanimous Ratification</span>
+      <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-10">
+        <div className="inline-flex items-center gap-2 mb-4">
+          <Badge variant="accent" size="sm" dot icon={<Sparkles className="w-3.5 h-3.5" />}>
+            <span>Eight Autonomous AI Personas &bull; Adversarial Deliberation &bull; Unanimous Ratification</span>
+          </Badge>
         </div>
 
         <h1 className="font-serif text-4xl sm:text-6xl font-bold tracking-tight text-gray-950 dark:text-gray-50 mb-3 leading-tight">
           The Council
         </h1>
 
-        <p className="font-serif text-lg sm:text-2xl font-medium text-indigo-600 dark:text-indigo-400 mb-4">
+        <p className="font-serif text-lg sm:text-2xl font-medium text-indigo-600 dark:text-indigo-400 mb-3.5 tracking-tight">
           Where Hard Dilemmas Meet Disciplined Consensus
         </p>
 
@@ -141,9 +175,12 @@ export default function LandingPage() {
       </div>
 
       {/* Query Formulation Input Box */}
-      <div className="w-full max-w-2xl mx-auto">
+      <div className="w-full max-w-2xl mx-auto space-y-3">
         <form onSubmit={handleSubmit} className="relative group">
-          <div className="relative rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white/90 dark:bg-gray-900/70 p-2 sm:p-2.5 backdrop-blur-md shadow-lg transition-smooth focus-within:border-indigo-500 dark:focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-500/20">
+          <GlassCard
+            padded="none"
+            className="p-2 sm:p-2.5 transition-all duration-300 focus-within:ring-2 focus-within:ring-indigo-500/30 focus-within:border-indigo-500/70 dark:focus-within:border-indigo-400"
+          >
             <textarea
               value={query}
               onChange={(e) => {
@@ -152,70 +189,67 @@ export default function LandingPage() {
               }}
               rows={3}
               placeholder="What should the council consider? (e.g. ethical dilemmas, policy trade-offs, high-stakes decisions...)"
-              className="w-full resize-none bg-transparent p-3 text-sm sm:text-base text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none leading-relaxed"
+              className="w-full resize-none bg-transparent p-3 sm:p-3.5 text-sm sm:text-base text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none leading-relaxed"
               disabled={isLoading}
             />
 
-            <div className="flex items-center justify-between pt-2 px-2 border-t border-gray-100 dark:border-gray-800/60">
+            <div className="flex items-center justify-between pt-2 px-2.5 border-t border-gray-100 dark:border-white/10">
               <span className="text-[11px] text-gray-400 font-mono">
                 {query.length} / 2000 chars
               </span>
 
-              <button
+              <Button
                 type="submit"
+                variant="primary"
+                size="md"
+                isLoading={isLoading}
+                loadingText="Convening Chamber..."
                 disabled={isLoading || !query.trim()}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-medium text-xs sm:text-sm shadow-md transition-smooth disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={(e) => handleSubmit(e)}
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+                className="shadow-md shadow-indigo-600/20"
               >
-                {isLoading ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Convening Chamber...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Convene The Council</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+                Convene The Council
+              </Button>
             </div>
-          </div>
+          </GlassCard>
         </form>
 
         {/* Engine Status Banner */}
-        <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs px-3.5 py-2 rounded-xl border border-gray-200/80 dark:border-gray-800 bg-white/60 dark:bg-gray-900/40 shadow-xs">
+        <GlassCard
+          padded="sm"
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs !rounded-[14px]"
+        >
           <div className="flex items-center gap-2">
             {hasKey ? (
-              <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
-                <CheckCircle className="w-3.5 h-3.5" />
+              <Badge variant="success" size="sm" dot icon={<CheckCircle className="w-3.5 h-3.5" />}>
                 <span>Live Gemini Engine ({engineModel})</span>
-              </span>
+              </Badge>
             ) : (
-              <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium">
-                <AlertTriangle className="w-3.5 h-3.5" />
+              <Badge variant="warning" size="sm" icon={<AlertTriangle className="w-3.5 h-3.5" />}>
                 <span>Simulation Mode (Gemini key not set)</span>
-              </span>
+              </Badge>
             )}
           </div>
           <button
             type="button"
             onClick={() => setIsKeyModalOpen(true)}
-            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 self-start sm:self-auto"
+            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1.5 self-start sm:self-auto transition-colors"
           >
             <Key className="w-3.5 h-3.5" />
             <span>{hasKey ? 'Engine Settings' : 'Enter Gemini API Key'}</span>
           </button>
-        </div>
+        </GlassCard>
 
         {error && (
-          <p className="mt-2.5 text-xs text-red-600 dark:text-red-400 text-center font-medium">
+          <p className="mt-2 text-xs text-red-600 dark:text-red-400 text-center font-medium bg-red-500/10 p-2.5 rounded-[10px] border border-red-500/25">
             {error}
           </p>
         )}
 
         {/* Quiet Suggestion Chips */}
-        <div className="mt-8">
-          <p className="text-xs uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500 text-center mb-3">
+        <div className="pt-4">
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500 text-center mb-3">
             Pivotal Dilemmas for Consideration
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
@@ -224,7 +258,7 @@ export default function LandingPage() {
                 key={i}
                 type="button"
                 onClick={() => handlePromptClick(item.text)}
-                className="text-left text-xs px-3 py-1.5 rounded-full border border-gray-200/70 dark:border-gray-800 bg-white/50 dark:bg-gray-900/30 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 transition-smooth"
+                className="text-left text-xs px-3 py-1.5 rounded-full border border-gray-200/80 dark:border-white/10 bg-white/60 dark:bg-white/[0.05] backdrop-blur-md text-gray-700 dark:text-gray-300 hover:text-gray-950 dark:hover:text-white hover:border-indigo-400/60 dark:hover:border-indigo-500/60 hover:bg-white/90 dark:hover:bg-white/[0.1] transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-xs"
               >
                 <span className="font-semibold text-indigo-600 dark:text-indigo-400 mr-1.5">{item.label}:</span>
                 <span>{item.text.length > 55 ? `${item.text.slice(0, 55)}...` : item.text}</span>
@@ -235,9 +269,9 @@ export default function LandingPage() {
       </div>
 
       {/* Council Members Preview Grid */}
-      <div className="w-full max-w-5xl mx-auto mt-16 pt-8 border-t border-gray-200/60 dark:border-gray-800/60">
+      <div className="w-full max-w-5xl mx-auto mt-14 pt-8 border-t border-gray-200/60 dark:border-white/10">
         <div className="text-center mb-6">
-          <h3 className="font-serif text-lg font-bold text-gray-900 dark:text-gray-100">
+          <h3 className="font-serif text-lg sm:text-xl font-bold text-gray-950 dark:text-gray-50 tracking-tight">
             Meet the Council Members
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -251,12 +285,16 @@ export default function LandingPage() {
               key={member.id}
               type="button"
               onClick={() => setSelectedPersona(member)}
-              className="group text-left p-3.5 rounded-xl border border-gray-200/70 dark:border-gray-800 bg-white/40 dark:bg-gray-900/40 hover:bg-white dark:hover:bg-gray-850 hover:border-indigo-300 dark:hover:border-indigo-700 shadow-xs hover:shadow-md transition-smooth"
+              className="group text-left p-3.5 rounded-[16px] border border-gray-200/80 dark:border-white/10 bg-white/60 dark:bg-white/[0.04] hover:bg-white/90 dark:hover:bg-white/[0.1] hover:border-indigo-400/50 dark:hover:border-indigo-500/50 backdrop-blur-md shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-1"
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2.5">
                 <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold font-mono"
-                  style={{ backgroundColor: `${member.colorHex}20`, color: member.colorHex }}
+                  className="w-7 h-7 rounded-[8px] flex items-center justify-center text-xs font-bold font-mono border"
+                  style={{
+                    backgroundColor: `${member.colorHex}18`,
+                    color: member.colorHex,
+                    borderColor: `${member.colorHex}40`,
+                  }}
                 >
                   {member.seatNumber}
                 </div>
@@ -271,7 +309,7 @@ export default function LandingPage() {
                   {member.archetype}
                 </span>
               </div>
-              <h4 className="font-serif font-bold text-xs sm:text-sm text-gray-900 dark:text-gray-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+              <h4 className="font-serif font-bold text-xs sm:text-sm text-gray-950 dark:text-gray-50 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                 {member.name}
               </h4>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
@@ -282,31 +320,43 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* Feature Footnotes */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto mt-12 pt-8 border-t border-gray-200/50 dark:border-gray-800/50 text-xs text-gray-500 dark:text-gray-400">
-        <div className="flex items-start gap-3">
-          <Shield className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-          <div>
-            <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-0.5">8 Genuinely Diverse Archetypes</h4>
-            <p className="leading-relaxed">Skeptic, Optimist, Ethicist, Pragmatist, Systems Thinker, Historian, Humanist, and Contrarian.</p>
+      {/* Feature Footnotes in Glass Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 max-w-4xl mx-auto mt-12 pt-8 border-t border-gray-200/60 dark:border-white/10 text-xs">
+        <GlassCard padded="sm" className="flex items-start gap-3 !rounded-[14px]">
+          <div className="w-8 h-8 rounded-[8px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20">
+            <Shield className="w-4 h-4" />
           </div>
-        </div>
+          <div>
+            <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-0.5">8 Genuinely Diverse Archetypes</h4>
+            <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+              Skeptic, Optimist, Ethicist, Pragmatist, Systems Thinker, Historian, Humanist, and Contrarian.
+            </p>
+          </div>
+        </GlassCard>
 
-        <div className="flex items-start gap-3">
-          <Scale className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-          <div>
-            <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-0.5">Strict Honesty Rule</h4>
-            <p className="leading-relaxed">Unanimity is never faked. If members cannot agree after debate cycles, formal dissent is registered.</p>
+        <GlassCard padded="sm" className="flex items-start gap-3 !rounded-[14px]">
+          <div className="w-8 h-8 rounded-[8px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20">
+            <Scale className="w-4 h-4" />
           </div>
-        </div>
+          <div>
+            <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-0.5">Strict Honesty Rule</h4>
+            <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+              Unanimity is never faked. If members cannot agree after debate cycles, formal dissent is registered.
+            </p>
+          </div>
+        </GlassCard>
 
-        <div className="flex items-start gap-3">
-          <Compass className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-          <div>
-            <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-0.5">Dynamic Shift Tracking</h4>
-            <p className="leading-relaxed">Watch confidence scores move round-over-round as members are challenged and persuaded by peers.</p>
+        <GlassCard padded="sm" className="flex items-start gap-3 !rounded-[14px]">
+          <div className="w-8 h-8 rounded-[8px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20">
+            <Compass className="w-4 h-4" />
           </div>
-        </div>
+          <div>
+            <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-0.5">Dynamic Shift Tracking</h4>
+            <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+              Watch confidence scores move round-over-round as members are challenged and persuaded by peers.
+            </p>
+          </div>
+        </GlassCard>
       </div>
 
       {/* Persona Detail Modal */}

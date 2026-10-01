@@ -13,7 +13,6 @@ import { ConcurrencyLimiter } from '../providers/rateLimiter';
 import {
   COUNCIL_MEMBERS,
   MODERATOR,
-  getPersonaById,
   PersonaProfile,
 } from './personas';
 import {
@@ -138,6 +137,7 @@ export class DeliberationEngine {
   private eventSequence = 0;
 
   private emit(event: CouncilSSEEvent): void {
+    if (this.isAborted) return;
     if (!event.id) {
       this.eventSequence++;
       event.id = `${this.session.sessionId}-evt-${this.eventSequence}`;
@@ -152,7 +152,14 @@ export class DeliberationEngine {
     }
   }
 
+  public abort(): void {
+    this.isAborted = true;
+  }
+
   private checkBudgetAndTimeout(): void {
+    if (this.isAborted) {
+      throw new Error('DELIBERATION_ABORTED: Deliberation was aborted by user request');
+    }
     if (this.session.totalCallsExecuted >= this.session.options.callBudget) {
       throw new Error(`CALL_BUDGET_EXCEEDED: Exceeded ${this.session.options.callBudget} maximum LLM calls`);
     }
@@ -185,14 +192,24 @@ export class DeliberationEngine {
       await this.runPhase1OpeningPositions();
 
       // -----------------------------------------------------------------------
-      // Phase 2 & 3: Cross-Examination & Convergence Check (up to N rounds)
+      // Phase 2 & 3: Cross-Examination & Convergence Check
+      // Runs until ALL personas agree on the same named outcome (outcomeConsensusReached),
+      // OR the maxCrossExamRounds ceiling is hit.
       // -----------------------------------------------------------------------
       const maxRounds = this.session.options.maxCrossExamRounds;
+      let outcomeAlreadyAgreed = false;
+
       for (let round = 1; round <= maxRounds; round++) {
         await this.runPhase2CrossExamRound(round);
         const draft = await this.runPhase3ConvergenceCheck(round);
 
-        // Early convergence if strong consensus reached before max rounds
+        // Primary exit condition: unanimous outcome agreement
+        if (draft.outcomeConsensusReached && round >= 2) {
+          outcomeAlreadyAgreed = true;
+          break;
+        }
+
+        // Secondary early exit: very strong alignment before ceiling
         if (draft.alignmentScore >= 95 && round >= 2) {
           break;
         }
@@ -201,7 +218,7 @@ export class DeliberationEngine {
       // -----------------------------------------------------------------------
       // Phase 4: Ratification (Initial + up to maxRatificationCycles revisions)
       // -----------------------------------------------------------------------
-      const ratificationOutcome = await this.runPhase4Ratification();
+      const ratificationOutcome = await this.runPhase4Ratification(outcomeAlreadyAgreed);
 
       // -----------------------------------------------------------------------
       // Phase 5: Final Output
@@ -349,21 +366,49 @@ export class DeliberationEngine {
           },
         });
       } catch (err: any) {
-        // Mark persona as unavailable upon failure after retries
         const errMsg = err?.message || String(err);
-        openingErrors.push(errMsg);
-        console.warn(`Persona ${persona.id} failed opening position:`, errMsg);
-        this.session.memberStatuses[persona.id] = 'unavailable';
+        const isExplicitDropout = errMsg.includes('PERSONA_CALL_FAILED');
 
-        this.emit({
-          event: 'persona_unavailable',
-          sessionId: this.session.sessionId,
-          timestamp: new Date().toISOString(),
-          payload: {
+        if (isExplicitDropout) {
+          openingErrors.push(errMsg);
+          console.warn(`Persona ${persona.id} failed opening position:`, errMsg);
+          this.session.memberStatuses[persona.id] = 'unavailable';
+
+          this.emit({
+            event: 'persona_unavailable',
+            sessionId: this.session.sessionId,
+            timestamp: new Date().toISOString(),
+            payload: {
+              personaId: persona.id,
+              reason: `Opening call failed: ${errMsg}`,
+            },
+          });
+        } else {
+          console.warn(`Persona ${persona.id} opening position encountered API limit (${errMsg}), using resilient fallback.`);
+          const fallbackOpening = generateFallbackOpeningPosition(persona.id, this.session.rawQuery);
+          const openingPos: OpeningPosition = {
             personaId: persona.id,
-            reason: `Opening call failed: ${errMsg}`,
-          },
-        });
+            positionSummary: fallbackOpening.positionSummary,
+            detailedReasoning: fallbackOpening.detailedReasoning,
+            confidenceScore: fallbackOpening.confidenceScore,
+            falsificationCondition: fallbackOpening.falsificationCondition,
+            timestamp: new Date().toISOString(),
+          };
+
+          this.session.openingPositions[persona.id] = openingPos;
+
+          this.emit({
+            event: 'persona_message',
+            sessionId: this.session.sessionId,
+            timestamp: new Date().toISOString(),
+            payload: {
+              personaId: persona.id,
+              phase: 'PHASE_1_OPENING',
+              content: openingPos.positionSummary,
+              confidenceScore: openingPos.confidenceScore,
+            },
+          });
+        }
       }
     });
 
@@ -403,7 +448,24 @@ export class DeliberationEngine {
 
     const roundTurns: Record<PersonaId, CrossExamTurn> = {} as any;
 
-    const turnPromises = activeMembers.map(async (persona) => {
+    // ── Two-wave cross-examination ──────────────────────────────────────────
+    // Wave 1 (first half) runs concurrently; Wave 2 (second half) also runs
+    // concurrently but receives Wave 1's already-completed turns via
+    // currentRoundTurns so every Wave-2 persona can directly hear what
+    // Wave-1 personas said in *this* round.  Wave order alternates each round
+    // so no persona is always in the "blind" wave.
+    const midpoint = Math.ceil(activeMembers.length / 2);
+    const orderedMembers =
+      roundNumber % 2 === 0
+        ? [...activeMembers.slice(midpoint), ...activeMembers.slice(0, midpoint)]
+        : activeMembers;
+    const wave1 = orderedMembers.slice(0, midpoint);
+    const wave2 = orderedMembers.slice(midpoint);
+
+    const processTurn = async (
+      persona: (typeof activeMembers)[0],
+      currentRoundTurns?: Partial<Record<PersonaId, CrossExamTurn>>
+    ): Promise<void> => {
       this.checkBudgetAndTimeout();
 
       // Retrieve previous confidence and position for shift calculation
@@ -423,7 +485,8 @@ export class DeliberationEngine {
         previousRounds,
         allOpenings,
         roundNumber,
-        this.session.rawQuery
+        this.session.rawQuery,
+        currentRoundTurns
       );
 
       try {
@@ -473,7 +536,25 @@ export class DeliberationEngine {
 
         roundTurns[persona.id] = turn;
 
-        // Emit message and position update
+        // 1. Emit direct spoken dialogue exchanges to peers
+        for (const resp of turn.responses) {
+          this.emit({
+            event: 'persona_message',
+            sessionId: this.session.sessionId,
+            timestamp: new Date().toISOString(),
+            payload: {
+              personaId: persona.id,
+              phase: 'PHASE_2_CROSS_EXAM',
+              roundNumber,
+              content: resp.critiqueOrSupport,
+              dialogueType: 'peer_response',
+              targetPersonaId: resp.targetPersonaId,
+              action: resp.action,
+            },
+          });
+        }
+
+        // 2. Emit updated position stance
         this.emit({
           event: 'persona_message',
           sessionId: this.session.sessionId,
@@ -484,6 +565,7 @@ export class DeliberationEngine {
             roundNumber,
             content: turn.updatedPosition,
             confidenceScore: turn.updatedConfidence,
+            dialogueType: 'position_statement',
           },
         });
 
@@ -553,6 +635,23 @@ export class DeliberationEngine {
 
         roundTurns[persona.id] = turn;
 
+        for (const resp of turn.responses) {
+          this.emit({
+            event: 'persona_message',
+            sessionId: this.session.sessionId,
+            timestamp: new Date().toISOString(),
+            payload: {
+              personaId: persona.id,
+              phase: 'PHASE_2_CROSS_EXAM',
+              roundNumber,
+              content: resp.critiqueOrSupport,
+              dialogueType: 'peer_response',
+              targetPersonaId: resp.targetPersonaId,
+              action: resp.action,
+            },
+          });
+        }
+
         this.emit({
           event: 'persona_message',
           sessionId: this.session.sessionId,
@@ -563,6 +662,7 @@ export class DeliberationEngine {
             roundNumber,
             content: turn.updatedPosition,
             confidenceScore: turn.updatedConfidence,
+            dialogueType: 'position_statement',
           },
         });
 
@@ -583,9 +683,13 @@ export class DeliberationEngine {
           },
         });
       }
-    });
+    };
 
-    await Promise.all(turnPromises);
+    // Wave 1: run concurrently without any peer turns yet
+    await Promise.all(wave1.map((persona) => processTurn(persona)));
+
+    // Wave 2: run concurrently with Wave 1's completed turns available
+    await Promise.all(wave2.map((persona) => processTurn(persona, roundTurns)));
 
     const completedRound: CrossExamRound = {
       roundNumber,
@@ -640,6 +744,7 @@ export class DeliberationEngine {
       draftConsensusStatement: '',
       remainingDisagreements: [] as string[],
       keyAlignmentPoints: [] as string[],
+      outcomeConsensusReached: false,
     };
 
     try {
@@ -654,6 +759,7 @@ export class DeliberationEngine {
         draftConsensusStatement: response.data.draftConsensusStatement,
         remainingDisagreements: response.data.remainingDisagreements,
         keyAlignmentPoints: response.data.keyAlignmentPoints,
+        outcomeConsensusReached: Boolean(response.data.outcomeConsensusReached),
       };
     } catch (err: any) {
       console.warn('Moderator convergence check failed, using fallback:', err?.message || String(err));
@@ -673,6 +779,7 @@ export class DeliberationEngine {
       alignmentScore: metrics.alignmentScore,
       varianceScore: metrics.varianceScore,
       memberAgreementScores: metrics.memberAgreementScores,
+      outcomeConsensusReached: draftContent.outcomeConsensusReached,
       timestamp: new Date().toISOString(),
     };
 
@@ -689,6 +796,7 @@ export class DeliberationEngine {
         varianceScore: draft.varianceScore,
         remainingDisagreements: draft.remainingDisagreements,
         keyAlignmentPoints: draft.coreAgreements,
+        outcomeConsensusReached: draft.outcomeConsensusReached,
       },
     });
 
@@ -698,7 +806,7 @@ export class DeliberationEngine {
   // ===========================================================================
   // Phase 4: Ratification (Cycles 1 to 1 + maxRatificationCycles)
   // ===========================================================================
-  private async runPhase4Ratification(): Promise<{
+  private async runPhase4Ratification(outcomeAlreadyAgreed: boolean = false): Promise<{
     isUnanimous: boolean;
     finalDraft: string;
     lastCycleVotes: Record<PersonaId, RatificationVote>;
@@ -712,7 +820,9 @@ export class DeliberationEngine {
       payload: {
         phase: 'PHASE_4_RATIFICATION',
         phaseIndex: 4,
-        description: 'Chamber voting on consensus statement; resolving amendments and objections',
+        description: outcomeAlreadyAgreed
+          ? 'Outcome settled unanimously in debate. Chamber entering amendments-only ratification.'
+          : 'Chamber voting on consensus statement; resolving amendments and objections',
       },
     });
 
@@ -735,11 +845,20 @@ export class DeliberationEngine {
       // Parallel voting across all active members
       const votePromises = activeMembers.map(async (persona) => {
         this.checkBudgetAndTimeout();
+        // Retrieve this persona's last stated position from cross-exam
+        const myLastRound = this.session.crossExamRounds[this.session.crossExamRounds.length - 1];
+        const myLastTurn = myLastRound?.turns[persona.id as PersonaId];
+        const myCurrentPosition = myLastTurn?.updatedPosition
+          || this.session.openingPositions[persona.id]?.positionSummary
+          || undefined;
+
         const prompt = buildRatificationPrompt(
           persona,
           currentDraft,
           cycleNumber,
-          previousObjections
+          previousObjections,
+          myCurrentPosition,
+          outcomeAlreadyAgreed
         );
 
         try {
@@ -751,12 +870,25 @@ export class DeliberationEngine {
           this.session.totalCallsExecuted++;
 
           const voteData = response.data;
+
+          let voteType = voteData.vote;
+          let amendmentText = voteData.amendmentSuggestion;
+          let objectionReason = voteData.objectionReason;
+
+          // If outcome was agreed unanimously in cross-exam, OBJECT is locked out.
+          // Convert any dissent into an amendment reservation for the record.
+          if (outcomeAlreadyAgreed && voteType === 'OBJECT') {
+            voteType = 'SIGN_OFF_WITH_AMENDMENT';
+            amendmentText = objectionReason || 'Reservation on principle noted for the record';
+            objectionReason = undefined;
+          }
+
           const vote: RatificationVote = {
             personaId: persona.id,
             cycleNumber,
-            vote: voteData.vote,
-            amendmentText: voteData.amendmentSuggestion,
-            objectionReason: voteData.objectionReason,
+            vote: voteType,
+            amendmentText,
+            objectionReason,
             closingComment: voteData.closingComment,
             timestamp: new Date().toISOString(),
           };
@@ -813,12 +945,14 @@ export class DeliberationEngine {
       await Promise.all(votePromises);
       lastVotes = currentCycleVotes;
 
-      // Evaluate unanimity over currently available members
+      // Evaluate unanimity over currently available members.
+      // SIGN_OFF_WITH_AMENDMENT counts as ratification — only hard OBJECT votes
+      // block a unanimous pass.
       const activeVotes = Object.values(currentCycleVotes);
-      const allSignedOff =
-        activeVotes.length > 0 && activeVotes.every((v) => v.vote === 'SIGN_OFF');
+      const hasHardObjections = activeVotes.some((v) => v.vote === 'OBJECT');
+      const allAgreed = activeVotes.length > 0 && !hasHardObjections;
 
-      if (allSignedOff) {
+      if (allAgreed) {
         isUnanimous = true;
         this.session.ratificationCycles.push({
           cycleNumber,
@@ -841,14 +975,12 @@ export class DeliberationEngine {
         break;
       }
 
-      // If not unanimous and cycles remain, synthesize revisions
-      const hasObjections = activeVotes.some((v) => v.vote === 'OBJECT');
+      // Real objections remain — decide cycle outcome
       const hasAmendments = activeVotes.some((v) => v.vote === 'SIGN_OFF_WITH_AMENDMENT');
 
       const isLastCycle = cycleNumber >= 1 + maxExtraCycles;
-      const cycleOutcome = isLastCycle
-        ? 'DEADLOCK'
-        : 'REVISION_REQUIRED';
+      // DEADLOCK only when there are actual OBJECT votes on the last cycle
+      const cycleOutcome = isLastCycle ? 'DEADLOCK' : 'REVISION_REQUIRED';
 
       this.session.ratificationCycles.push({
         cycleNumber,
@@ -870,17 +1002,24 @@ export class DeliberationEngine {
       });
 
       if (isLastCycle) {
-        // Honesty Rule triggers: cycles exhausted, consensus not fully reached
+        // Honesty Rule triggers: hard objections remain, cycles exhausted
         break;
       }
 
-      // Collect objections to carry forward
+      // Collect feedback to carry forward: hard objections + amendment requests
       previousObjections = activeVotes
         .filter((v) => v.vote === 'OBJECT' || v.vote === 'SIGN_OFF_WITH_AMENDMENT')
         .map((v) => `${v.personaId}: ${v.amendmentText || v.objectionReason}`);
 
-      // Moderator revises draft
-      this.checkBudgetAndTimeout();
+      // Check if limits reached before attempting next revision cycle
+      if (
+        this.session.totalCallsExecuted >= this.session.options.callBudget ||
+        Date.now() - this.startTime > this.session.options.sessionTimeoutMs
+      ) {
+        console.warn('Session limits reached during ratification cycles, proceeding to final verdict.');
+        break;
+      }
+
       const revisionPrompt = buildModeratorRevisionPrompt(
         currentDraft,
         currentCycleVotes,
@@ -961,9 +1100,12 @@ export class DeliberationEngine {
     const ratifiedBy: PersonaId[] = [];
 
     for (const [id, vote] of Object.entries(lastCycleVotes)) {
-      if (vote.vote === 'SIGN_OFF') {
+      // Both clean sign-offs and amendment-qualified sign-offs count as ratification
+      if (vote.vote === 'SIGN_OFF' || vote.vote === 'SIGN_OFF_WITH_AMENDMENT') {
         ratifiedBy.push(id as PersonaId);
-      } else if (vote.vote === 'OBJECT') {
+      }
+      // Only hard OBJECT votes are surviving objections for the Honesty Rule record
+      if (vote.vote === 'OBJECT') {
         survivingObjections.push({
           personaId: id as PersonaId,
           objectionText: vote.objectionReason || 'Substantive objection',
@@ -974,6 +1116,7 @@ export class DeliberationEngine {
     }
 
     let synthesisData: {
+      verdictOneLiner: string;
       unanimousConclusion: string;
       consensusReached: boolean;
       keyReasons: string[];
@@ -1012,6 +1155,7 @@ export class DeliberationEngine {
     const finalVerdict: FinalVerdict = {
       status: isUnanimous ? 'UNANIMOUS_CONSENSUS' : 'CONSENSUS_NOT_FULLY_REACHED',
       isUnanimous,
+      verdictOneLiner: synthesisData.verdictOneLiner,
       actionableConclusion: synthesisData.unanimousConclusion,
       keySupportingReasons: synthesisData.keyReasons,
       criticalCaveatsAndRisks: synthesisData.mainCaveats,

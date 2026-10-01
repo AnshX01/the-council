@@ -20,9 +20,14 @@
 /.next/
 /out/
 
-# Production
+# Production & Persistence
 /build
 /data/
+/logs/
+*.db
+*.db-wal
+*.db-shm
+*.log
 
 # Misc
 .DS_Store

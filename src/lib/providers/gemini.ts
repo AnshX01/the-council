@@ -58,11 +58,22 @@ export class GeminiProvider implements LLMProvider {
     return raw;
   }
 
+  private isAbortError(err: any): boolean {
+    const msg = String(err?.message || '').toLowerCase();
+    return (
+      err?.name === 'AbortError' ||
+      msg.includes('this operation was aborted') ||
+      msg.includes('aborted') ||
+      (typeof err?.code === 'string' && err.code === 'ABORT_ERR')
+    );
+  }
+
   async healthCheck(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
     const start = Date.now();
     const candidateModels = Array.from(
       new Set([
         this.modelId,
+        'gemini-3-flash-preview',
         'gemini-3.5-flash',
         'gemini-3.5-flash-lite',
         'gemini-3.1-flash-lite',
@@ -74,6 +85,9 @@ export class GeminiProvider implements LLMProvider {
 
     let lastError = '';
     for (const model of candidateModels) {
+      // Per-attempt timeout: 5s so the health check never hangs on a slow/missing model
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
       try {
         const response = await this.client.models.generateContent({
           model,
@@ -81,18 +95,43 @@ export class GeminiProvider implements LLMProvider {
           config: {
             maxOutputTokens: 5,
             temperature: 0.1,
+            abortSignal: controller.signal,
           },
         });
+        clearTimeout(timer);
         const text = response?.text;
         if (text !== undefined) {
           // If our current model was failing, update to the verified working candidate
-          if (this.modelId !== model && (this.modelId.includes('1.5') || this.modelId.includes('2.0') || this.modelId.includes('2.5'))) {
+          if (
+            this.modelId !== model &&
+            (this.modelId.includes('1.5') ||
+              this.modelId.includes('2.0') ||
+              this.modelId.includes('2.5'))
+          ) {
             this.modelId = model;
           }
           return { ok: true, latencyMs: Date.now() - start };
         }
       } catch (err: any) {
+        clearTimeout(timer);
         lastError = this.extractCleanErrorMessage(err);
+        const msg = String(err?.message || '').toLowerCase();
+        const isAbort = this.isAbortError(err);
+        if (!isAbort) {
+          // Non-timeout errors: check if it's a model-not-found type
+          // (try next model) vs. a fatal error like bad API key (stop early)
+          const isModelIssue =
+            msg.includes('not found') ||
+            msg.includes('404') ||
+            msg.includes('unsupported') ||
+            msg.includes('no longer available') ||
+            msg.includes('not supported');
+          if (!isModelIssue) {
+            // Fatal error (e.g. invalid API key, auth failure) — no point trying others
+            break;
+          }
+        }
+        // Timed out on this model OR model not found → try next candidate
       }
     }
 
@@ -110,6 +149,7 @@ export class GeminiProvider implements LLMProvider {
     const candidateModels = Array.from(
       new Set([
         this.modelId,
+        'gemini-3-flash-preview',
         'gemini-3.5-flash',
         'gemini-3.5-flash-lite',
         'gemini-3.1-flash-lite',
@@ -121,6 +161,11 @@ export class GeminiProvider implements LLMProvider {
 
     let lastError: any = null;
     for (const model of candidateModels) {
+      // If the caller's abort signal is already triggered, stop immediately
+      if (params.config?.abortSignal?.aborted) {
+        throw new DOMException('This operation was aborted', 'AbortError');
+      }
+
       try {
         const response = await this.client.models.generateContent({
           model,
@@ -134,6 +179,12 @@ export class GeminiProvider implements LLMProvider {
         lastError = err;
         const msg = String(err?.message || '').toLowerCase();
         const status = err?.status || err?.statusCode || 0;
+
+        // AbortError (timeout or explicit abort) — do not try next model, propagate immediately
+        if (this.isAbortError(err)) {
+          throw err;
+        }
+
         if (
           status === 429 ||
           msg.includes('quota') ||

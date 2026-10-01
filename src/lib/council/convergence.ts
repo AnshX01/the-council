@@ -150,7 +150,7 @@ export function calculateAlignmentScore(params: AlignmentCalculationParams): num
   } else if (typeof agreementRatio === 'number') {
     // Cross-examination phase: balance agreement ratio, low variance, and mean confidence
     const aNorm = Math.min(1, Math.max(0, agreementRatio));
-    score = 0.4 * aNorm + 0.35 * vNorm + 0.25 * cNorm;
+    score = 0.25 * aNorm + 0.45 * vNorm + 0.30 * cNorm;
   } else {
     // Opening phase: variance and confidence only
     score = 0.6 * vNorm + 0.4 * cNorm;

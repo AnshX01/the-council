@@ -86,7 +86,7 @@ export class Semaphore {
 
 export class ConcurrencyLimiter extends Semaphore {
   private lastDispatchTime = 0;
-  private minIntervalMs = process.env.NODE_ENV === 'test' ? 0 : 200;
+  private minIntervalMs = process.env.NODE_ENV === 'test' ? 0 : 1500;
 
   async run<T>(fn: () => Promise<T>): Promise<T> {
     const now = Date.now();
@@ -209,9 +209,10 @@ export async function executeWithRetry<T>(
       }
 
       const explicitDelay = extractRetryDelayMs(err);
+      const jitterMs = Math.floor(randomFn() * 3000);
       const sleepTime =
         explicitDelay !== null
-          ? explicitDelay
+          ? explicitDelay + jitterMs
           : calculateBackoffWithJitter(attempt, baseDelayMs, maxDelayMs, randomFn);
 
       if (options.onRetry) {

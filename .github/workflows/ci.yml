@@ -1,0 +1,46 @@
+name: The Council CI
+
+on:
+  push:
+    branches: [main, overhaul/daily-driver]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Verify & Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit & Integration Tests (Vitest)
+        run: npm test
+
+      - name: Build Next.js Production App
+        run: npm run build
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-End Tests (Playwright)
+        run: npx playwright test --project=chromium
+        env:
+          USE_MOCK_PROVIDER: 'true'
+          TEST_PORT: '3100'

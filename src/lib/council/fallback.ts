@@ -47,6 +47,7 @@ export function generateFallbackConvergence(
   remainingDisagreements: string[];
   convergenceScore: number;
   keyAlignmentPoints: string[];
+  outcomeConsensusReached: boolean;
 } {
   return {
     draftConsensusStatement: `The council is progressing through round ${roundNumber}. Members agree on core risk mitigation while continuing to debate optimal prioritization and execution trade-offs.`,
@@ -59,6 +60,7 @@ export function generateFallbackConvergence(
       'Commitment to rigorous evaluation before action',
       'Recognition of human and ethical factors in decision outcomes',
     ],
+    outcomeConsensusReached: alignmentScore >= 90,
   };
 }
 
@@ -89,6 +91,7 @@ export function generateFallbackFinalSynthesis(
   isUnanimous: boolean,
   votes: Record<string, RatificationVote>
 ): {
+  verdictOneLiner: string;
   unanimousConclusion: string;
   consensusReached: boolean;
   keyReasons: string[];
@@ -100,6 +103,9 @@ export function generateFallbackFinalSynthesis(
     .map(([id, v]) => `${id}: ${v.objectionReason || 'Substantive objection'}`);
 
   return {
+    verdictOneLiner: isUnanimous
+      ? `The Council unanimously concludes: proceed with the majority position.`
+      : `Consensus not reached — majority favors proceeding with noted objections.`,
     unanimousConclusion: isUnanimous
       ? `The Council has reached a unanimous conclusion: ${finalDraft}`
       : `The Council concluded with consensus not fully reached. Primary majority position: ${finalDraft}. Persistent objections noted: ${objections.join('; ')}`,
@@ -150,12 +156,12 @@ export function generateFallbackCrossExamTurn(
       {
         targetPersonaId: p1,
         action: 'CHALLENGE',
-        critiqueOrSupport: `From the perspective of ${personaId}, we must rigorously verify whether assumptions hold under empirical strain.`,
+        critiqueOrSupport: `@${p1.charAt(0).toUpperCase() + p1.slice(1)}, we must rigorously verify whether your core assumptions hold under empirical strain before committing.`,
       },
       {
         targetPersonaId: p2,
         action: 'AGREE',
-        critiqueOrSupport: 'Concurring on establishing operational covenants while preserving foundational safeguards.',
+        critiqueOrSupport: `@${p2.charAt(0).toUpperCase() + p2.slice(1)}, I agree with your operational framing here, provided we preserve foundational safeguards.`,
       },
     ],
     updatedPosition:

@@ -2,17 +2,21 @@
 
 import React, { useState } from 'react';
 import { FinalVerdict } from '@/types/session';
-import { getPersonaById, COUNCIL_MEMBERS } from '@/lib/council/personas';
+import { findPersonaById, COUNCIL_MEMBERS } from '@/lib/council/personas';
 import {
   CheckCircle2,
   AlertTriangle,
   Copy,
   Check,
   Download,
-  Share2,
   Sparkles,
   ShieldAlert,
+  Compass,
 } from 'lucide-react';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
 
 interface FinalVerdictCardProps {
   verdict: FinalVerdict;
@@ -21,6 +25,7 @@ interface FinalVerdictCardProps {
 
 export function FinalVerdictCard({ verdict, query }: FinalVerdictCardProps) {
   const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
 
   const isUnanimous = verdict.isUnanimous;
 
@@ -28,7 +33,12 @@ export function FinalVerdictCard({ verdict, query }: FinalVerdictCardProps) {
     const md = generateMarkdownExport();
     navigator.clipboard.writeText(md);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    toast({
+      type: 'success',
+      title: 'Deliberation Summary Copied',
+      description: 'The deliberation synthesis and persona trajectories are in your clipboard.',
+    });
+    setTimeout(() => setCopied(false), 2500);
   };
 
   const downloadMarkdown = () => {
@@ -41,6 +51,11 @@ export function FinalVerdictCard({ verdict, query }: FinalVerdictCardProps) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    toast({
+      type: 'info',
+      title: 'Report Exported',
+      description: 'The markdown verdict report has been downloaded.',
+    });
   };
 
   const generateMarkdownExport = (): string => {
@@ -54,25 +69,27 @@ export function FinalVerdictCard({ verdict, query }: FinalVerdictCardProps) {
 
 ---
 
-## 🏛️ Final Conclusion
-${verdict.actionableConclusion}
+## 🏛️ Final Verdict
+**${verdict.verdictOneLiner || (verdict.actionableConclusion ? verdict.actionableConclusion.split(/[.!?]/)[0] + '.' : 'Verdict concluded.')}**
+
+${verdict.actionableConclusion || ''}
 
 ---
 
 ## 🔑 Key Pillars of Justification
-${verdict.keySupportingReasons.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+${(verdict.keySupportingReasons ?? []).map((r, i) => `${i + 1}. ${r}`).join('\n')}
 
 ---
 
 ## ⚠️ Critical Caveats & Boundary Limits
-${verdict.criticalCaveatsAndRisks.map((c, i) => `- ${c}`).join('\n')}
+${(verdict.criticalCaveatsAndRisks ?? []).map((c) => `- ${c}`).join('\n')}
 
 ${
-  verdict.survivingObjections.length > 0
-    ? `\n---\n\n## 🛑 Surviving Objections (Honesty Rule Activated)\n${verdict.survivingObjections
+  (verdict.survivingObjections ?? []).length > 0
+    ? `\n---\n\n## 🛑 Surviving Objections (Honesty Rule Activated)\n${(verdict.survivingObjections ?? [])
         .map(
           (o) =>
-            `- **${getPersonaById(o.personaId).name}:** ${o.objectionText}\n  *Principle:* ${o.irreconcilablePrinciple}`
+            `- **${findPersonaById(o.personaId)?.name ?? o.personaId}:** ${o.objectionText}\n  *Principle:* ${o.irreconcilablePrinciple}`
         )
         .join('\n')}\n`
     : ''
@@ -88,28 +105,31 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
   };
 
   return (
-    <section
+    <GlassCard
+      as="section"
       aria-label="Final Council Verdict"
-      className={`w-full rounded-2xl border p-6 sm:p-8 backdrop-blur-md shadow-lg transition-smooth ${
+      variant="highlight"
+      padded="lg"
+      className={`w-full !rounded-[20px] transition-all animate-slide-up ${
         isUnanimous
-          ? 'border-indigo-200 dark:border-indigo-900/80 bg-gradient-to-b from-indigo-50/40 via-white/80 to-white/95 dark:from-indigo-950/20 dark:via-gray-900/60 dark:to-gray-900/90 council-glow'
-          : 'border-amber-200 dark:border-amber-900/80 bg-gradient-to-b from-amber-50/40 via-white/80 to-white/95 dark:from-amber-950/20 dark:via-gray-900/60 dark:to-gray-900/90'
+          ? '!border-indigo-400/30 dark:!border-indigo-500/40 council-glow'
+          : '!border-amber-400/30 dark:!border-amber-500/40'
       }`}
     >
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-gray-200/80 dark:border-gray-800 gap-4">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-gray-200/70 dark:border-white/10 gap-4">
+        <div className="flex items-center gap-3.5">
           <div
-            className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-md ${
+            className={`w-11 h-11 rounded-[14px] flex items-center justify-center font-bold text-white shadow-md shrink-0 border border-white/20 ${
               isUnanimous
-                ? 'bg-gradient-to-tr from-emerald-600 to-indigo-600'
-                : 'bg-gradient-to-tr from-amber-600 to-red-600'
+                ? 'bg-gradient-to-tr from-emerald-600 via-indigo-600 to-indigo-500 shadow-indigo-500/20'
+                : 'bg-gradient-to-tr from-amber-600 to-red-600 shadow-amber-500/20'
             }`}
           >
             {isUnanimous ? (
-              <CheckCircle2 className="w-5 h-5" />
+              <CheckCircle2 className="w-5 h-5 stroke-[2.2]" />
             ) : (
-              <ShieldAlert className="w-5 h-5" />
+              <ShieldAlert className="w-5 h-5 stroke-[2.2]" />
             )}
           </div>
           <div>
@@ -118,81 +138,89 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
                 Deliberation Concluded
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <h2 className="font-serif font-bold text-lg sm:text-xl text-gray-900 dark:text-gray-100">
+            <div className="flex flex-wrap items-center gap-2 mt-0.5">
+              <h2 className="font-serif font-bold text-lg sm:text-xl text-gray-950 dark:text-gray-50 leading-tight">
                 {isUnanimous ? 'Unanimous Consensus Reached' : 'Consensus Not Fully Reached'}
               </h2>
-              <span
-                className={`text-[10px] font-mono font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                  isUnanimous
-                    ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300'
-                    : 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
-                }`}
+              <Badge
+                variant={isUnanimous ? 'success' : 'warning'}
+                size="xs"
               >
                 {verdict.status.replace(/_/g, ' ')}
-              </span>
+              </Badge>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Deliberated across {verdict.totalRoundsDeliberated} rounds &bull; {verdict.ratifiedBy.length} of 8 members ratified
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Deliberated across {verdict.totalRoundsDeliberated} rounds &bull; {(verdict.ratifiedBy ?? []).length} of 8 members ratified{isUnanimous ? ' unanimously' : ((verdict.survivingObjections ?? []).length > 0 ? ` (${(verdict.survivingObjections ?? []).length} reservation${(verdict.survivingObjections ?? []).length > 1 ? 's' : ''} noted)` : '')}
             </p>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2">
-          <button
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={copyToClipboard}
-            className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 transition-smooth"
+            leftIcon={copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-gray-400" />}
             title="Copy verdict to clipboard"
           >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Copied to Clipboard</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 text-gray-400" />
-                <span>Copy Deliberation Summary</span>
-              </>
-            )}
-          </button>
+            {copied ? 'Copied to Clipboard' : 'Copy Deliberation Summary'}
+          </Button>
 
-          <button
+          <Button
+            variant="glass"
+            size="sm"
             onClick={downloadMarkdown}
-            className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 transition-smooth"
+            leftIcon={<Download className="w-3.5 h-3.5 text-gray-400" />}
             title="Download full Markdown report"
           >
-            <Download className="w-3.5 h-3.5 text-gray-400" />
-            <span>Export Markdown</span>
-          </button>
+            Export Markdown
+          </Button>
         </div>
       </div>
 
-      {/* Main Conclusion */}
-      <div className="py-6 border-b border-gray-200/60 dark:border-gray-800/60">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-          Actionable Guidance & Unanimous Synthesis
+      {/* Main Conclusion / Unanimous Synthesis Section */}
+      <div className="py-6 border-b border-gray-200/70 dark:border-white/10">
+        <div className="flex items-center gap-2 mb-2">
+          <Badge variant="accent" size="xs">
+            {isUnanimous ? 'Unanimous Synthesis' : 'Deliberation Synthesis'}
+          </Badge>
+        </div>
+        <h3
+          className={`font-serif font-bold text-xl sm:text-2xl leading-snug mb-3 tracking-tight ${
+            isUnanimous
+              ? 'text-indigo-950 dark:text-indigo-200'
+              : 'text-amber-950 dark:text-amber-200'
+          }`}
+        >
+          {verdict.verdictOneLiner || (verdict.actionableConclusion ? verdict.actionableConclusion.split(/[.!?]/)[0] + '.' : 'Verdict concluded.')}
         </h3>
-        <p className="font-serif text-base sm:text-lg text-gray-900 dark:text-gray-100 leading-relaxed font-medium">
-          {verdict.actionableConclusion}
-        </p>
+        
+        <div className="mt-3 p-4 rounded-[14px] bg-white/60 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/10 backdrop-blur-md">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1.5 flex items-center gap-1.5">
+            <Compass className="w-3.5 h-3.5" />
+            Actionable Guidance
+          </h4>
+          <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed font-sans">
+            {verdict.actionableConclusion}
+          </p>
+        </div>
       </div>
 
       {/* Supporting Reasons & Critical Caveats Grid */}
-      <div className="py-6 border-b border-gray-200/60 dark:border-gray-800/60 grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="py-6 border-b border-gray-200/70 dark:border-white/10 grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <h4 className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-3 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5" />
             Key Pillars of Agreement
           </h4>
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {verdict.keySupportingReasons.map((reason, i) => (
               <li
                 key={i}
-                className="text-xs text-gray-700 dark:text-gray-300 flex items-start gap-2 leading-relaxed"
+                className="text-xs text-gray-800 dark:text-gray-200 flex items-start gap-2.5 leading-relaxed bg-white/40 dark:bg-white/[0.03] p-2.5 rounded-[10px] border border-gray-100 dark:border-white/5"
               >
-                <span className="w-4 h-4 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                <span className="w-4 h-4 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5 border border-indigo-500/25">
                   {i + 1}
                 </span>
                 <span>{reason}</span>
@@ -206,11 +234,11 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
             <AlertTriangle className="w-3.5 h-3.5" />
             Crucial Caveats & Boundary Conditions
           </h4>
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {verdict.criticalCaveatsAndRisks.map((caveat, i) => (
               <li
                 key={i}
-                className="text-xs text-gray-700 dark:text-gray-300 flex items-start gap-2 leading-relaxed"
+                className="text-xs text-gray-800 dark:text-gray-200 flex items-start gap-2.5 leading-relaxed bg-white/40 dark:bg-white/[0.03] p-2.5 rounded-[10px] border border-gray-100 dark:border-white/5"
               >
                 <span className="text-amber-500 font-bold shrink-0 mt-0.5">&bull;</span>
                 <span>{caveat}</span>
@@ -222,28 +250,28 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
 
       {/* Surviving Objections Section (Honesty Rule) */}
       {!isUnanimous && verdict.survivingObjections.length > 0 && (
-        <div className="py-6 border-b border-gray-200/60 dark:border-gray-800/60 bg-red-50/30 dark:bg-red-950/20 -mx-6 sm:-mx-8 px-6 sm:px-8">
+        <div className="py-6 border-b border-gray-200/70 dark:border-white/10 bg-red-500/[0.04] -mx-6 sm:-mx-8 px-6 sm:px-8">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400 mb-2 flex items-center gap-1.5">
             <ShieldAlert className="w-3.5 h-3.5" />
-            Honesty Rule: Unresolved Dissenting Objections
+            Honesty Rule: Unresolved Reservations & Objections
           </h4>
           <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-            In accordance with council constitutional rules, agreement is never fabricated. The following members maintained formal objections:
+            In accordance with council constitutional rules, agreement is never fabricated. The following members maintained formal reservations or objections:
           </p>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {verdict.survivingObjections.map((obj, i) => {
-              const persona = getPersonaById(obj.personaId);
+              const persona = findPersonaById(obj.personaId);
               return (
                 <div
                   key={i}
-                  className="p-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-white/70 dark:bg-gray-900/60 text-xs"
+                  className="p-3.5 rounded-[12px] border border-red-500/25 bg-white/70 dark:bg-red-950/20 text-xs backdrop-blur-md"
                 >
                   <span className="font-serif font-bold text-red-700 dark:text-red-300">
-                    {persona.name}:
+                    {persona ? persona.name : obj.personaId}:
                   </span>{' '}
                   <span className="text-gray-800 dark:text-gray-200">{obj.objectionText}</span>
                   {obj.irreconcilablePrinciple && (
-                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 italic">
+                    <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 italic">
                       Principle: {obj.irreconcilablePrinciple}
                     </p>
                   )}
@@ -256,7 +284,7 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
 
       {/* How Views Shifted Panel */}
       <div className="pt-6">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
           How Personas&apos; Views Shifted
         </h4>
 
@@ -271,14 +299,14 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
             return (
               <div
                 key={member.id}
-                className="p-3 rounded-lg border border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/30 text-xs space-y-2"
+                className="p-3.5 rounded-[12px] border border-gray-200/60 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] backdrop-blur-md text-xs space-y-2"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <div
                     className="w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: member.colorHex }}
                   />
-                  <span className="font-serif font-semibold text-gray-900 dark:text-gray-100">
+                  <span className="font-serif font-bold text-gray-950 dark:text-gray-50">
                     {member.name}
                   </span>
                   <span className="text-[10px] text-gray-400">({member.title})</span>
@@ -287,7 +315,7 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
                 {hasStartedAt && hasShiftedTo ? (
                   <div className="space-y-1.5 text-[11px] leading-relaxed">
                     <div>
-                      <span className="font-semibold text-gray-500 uppercase text-[10px] tracking-wider block">
+                      <span className="font-semibold text-gray-400 uppercase text-[10px] tracking-wider block">
                         Initial Stance
                       </span>
                       <p className="text-gray-600 dark:text-gray-400 italic">
@@ -298,7 +326,7 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
                       <span className="font-semibold text-indigo-600 dark:text-indigo-400 uppercase text-[10px] tracking-wider block">
                         Final Stance
                       </span>
-                      <p className="text-gray-800 dark:text-gray-200">
+                      <p className="text-gray-800 dark:text-gray-200 font-medium">
                         Shifted to {shiftText.split('. Shifted to')[1]}
                       </p>
                     </div>
@@ -306,7 +334,7 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
                 ) : (
                   <div className="space-y-1 text-[11px] leading-relaxed">
                     <div>
-                      <span className="font-semibold text-gray-500 uppercase text-[10px] tracking-wider block">
+                      <span className="font-semibold text-gray-400 uppercase text-[10px] tracking-wider block">
                         Initial Stance
                       </span>
                       <p className="text-gray-600 dark:text-gray-400 italic">
@@ -317,7 +345,7 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
                       <span className="font-semibold text-indigo-600 dark:text-indigo-400 uppercase text-[10px] tracking-wider block">
                         Final Stance
                       </span>
-                      <p className="text-gray-800 dark:text-gray-200">{shiftText}</p>
+                      <p className="text-gray-800 dark:text-gray-200 font-medium">{shiftText}</p>
                     </div>
                   </div>
                 )}
@@ -326,6 +354,6 @@ ${COUNCIL_MEMBERS.map((m) => `- **${m.name}:** ${verdict.personaShiftSummaries[m
           })}
         </div>
       </div>
-    </section>
+    </GlassCard>
   );
 }

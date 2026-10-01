@@ -1,5 +1,25 @@
 # The Council: Overhaul Execution Log (`OVERHAUL_LOG.md`)
 
+## Session 2 Start State (Ground Truth Establishment)
+- **Timestamp:** October 1, 2026
+- **Node.js:** v24.13.0 (Windows PowerShell 5.1)
+- **Git Branch:** `overhaul/daily-driver`
+- **Head Commit:** `a0b3c86` ("docs: complete Phase 1 recon, architecture v2, design inventory, gap audit, and characterization suite")
+- **Repository Directories Verified:**
+  - `docs/`: `ARCHITECTURE_V2.md`, `DECISIONS.md`, `DESIGN_SYSTEM.md`, `GAP_AUDIT.md`, `LAUNCH_CHECKLIST.md`, `OVERHAUL_LOG.md`, `SECURITY.md`
+  - `src/lib/storage/`: `db.ts`, `migrations.ts`, `repository.ts`, `memoryStore.ts`
+  - `src/lib/runner/`: `durableRunner.ts`, `eventBus.ts`
+  - `tests/`: `tests/unit/` (adversarial, convergence, db, personas, rateLimiter, repository), `tests/integration/` (api, characterization, liveGemini, runner, stateMachine), `tests/e2e/` (council.spec.ts)
+- **Initial Test Run Results (`npm test`):**
+  - Total: 11 test files, 84 tests (80 passed, 1 skipped, 3 failed)
+  - Golden characterization suite: 6/6 passed (100% green)
+  - Failing suite: `tests/integration/runner.test.ts` (3/3 failed due to DB instance decoupling in runner instantiation)
+- **Diagnosis of In-Progress Runner Failure:**
+  - `DurableRunner` constructor accepts `(options, db?: any)` but `runner.test.ts` was passing only `options`, causing the runner to poll the default SQLite database while the test created sessions in an isolated in-memory DB.
+  - Interrupted session recovery also needed lease expiration check alignment with `Date.now()`.
+
+---
+
 ## System Information & Initial State
 - **Date:** October 1, 2026
 - **Lead Orchestrator:** Lead Engineer / Orchestrator (Multi-Agent Team)

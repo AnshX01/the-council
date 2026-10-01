@@ -13,14 +13,16 @@ import {
   ShiftRecord,
 } from '@/types/session';
 import { PersonaProfile, PersonaId } from '@/types/persona';
-import { getPersonaById } from '@/lib/council/personas';
+import { findPersonaById } from '@/lib/council/personas';
 import { PhaseTracker } from '@/components/PhaseTracker';
 import { ConsensusMeter } from '@/components/ConsensusMeter';
 import { CouncilTable } from '@/components/CouncilTable';
 import { DebateFeed } from '@/components/DebateFeed';
 import { FinalVerdictCard } from '@/components/FinalVerdictCard';
 import { PersonaDetailModal } from '@/components/PersonaDetailModal';
-import { ArrowLeft, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { Badge } from '@/components/ui/Badge';
+import { ArrowLeft, Loader2, AlertCircle, Compass, Radio } from 'lucide-react';
 
 export default function SessionPage({
   params,
@@ -165,7 +167,6 @@ export default function SessionPage({
 
     if (event.event === 'done') {
       setIsConnected(false);
-      // Close EventSource immediately to prevent browser reconnection loop
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
@@ -246,6 +247,7 @@ export default function SessionPage({
             alignmentScore: evt.payload.alignmentScore,
             varianceScore: evt.payload.varianceScore,
             memberAgreementScores: {},
+            outcomeConsensusReached: Boolean(evt.payload.outcomeConsensusReached),
             timestamp: evt.timestamp,
           });
         }
@@ -287,32 +289,47 @@ export default function SessionPage({
 
   if (error) {
     return (
-      <div className="py-16 text-center max-w-lg mx-auto">
-        <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto mb-4">
-          <AlertCircle className="w-6 h-6" />
-        </div>
-        <h2 className="font-serif text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-          Deliberation Error
-        </h2>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mb-6">{error}</p>
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition-smooth"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Return to Chamber Entrance</span>
-        </Link>
+      <div className="py-20 text-center max-w-lg mx-auto animate-fade-in">
+        <GlassCard padded="lg" className="!rounded-[20px] space-y-4">
+          <div className="w-12 h-12 rounded-[14px] bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto border border-red-500/25">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h2 className="font-serif text-xl font-bold text-gray-950 dark:text-gray-50">
+            Deliberation Error
+          </h2>
+          <p className="text-xs text-gray-600 dark:text-gray-300">{error}</p>
+          <div className="pt-2">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-[12px] bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Return to Chamber Entrance</span>
+            </Link>
+          </div>
+        </GlassCard>
       </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="py-24 text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600 dark:text-indigo-400 mx-auto mb-3" />
-        <p className="text-xs text-gray-500 font-mono tracking-wider uppercase">
-          Initializing Chamber & Seating Personas...
-        </p>
+      <div className="py-24 text-center max-w-md mx-auto space-y-4 animate-fade-in">
+        <GlassCard padded="lg" className="!rounded-[20px] space-y-4">
+          <div className="w-12 h-12 rounded-[14px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto border border-indigo-500/25">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+          <div>
+            <h3 className="font-serif font-bold text-base text-gray-950 dark:text-gray-50">
+              Convening Chamber
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-1">
+              Seating personas & initializing deliberation protocol...
+            </p>
+          </div>
+          {/* Skeleton loader track */}
+          <div className="w-full h-2 rounded-full skeleton-shimmer mt-4" />
+        </GlassCard>
       </div>
     );
   }
@@ -321,44 +338,41 @@ export default function SessionPage({
   const isConcluded = session.currentPhase === 'PHASE_5_FINAL_OUTPUT' && session.finalVerdict;
 
   return (
-    <div className="space-y-6">
-      {/* Session Breadcrumb & Status */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gray-200/60 dark:border-gray-800/60 gap-3">
+    <div className="space-y-6 animate-fade-in">
+      {/* Session Breadcrumb & Status Bar */}
+      <GlassCard
+        padded="sm"
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 !rounded-[16px]"
+      >
         <div className="flex items-center gap-3">
           <Link
             href="/"
-            className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-smooth"
+            className="p-2 rounded-[10px] border border-gray-200/80 dark:border-white/10 text-gray-500 hover:text-gray-950 dark:hover:text-white bg-white/40 dark:bg-white/5 hover:bg-white/80 dark:hover:bg-white/10 transition-colors"
             title="Return to entrance"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 block">
+          <div className="min-w-0">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 dark:text-gray-500 block leading-tight">
               Session ID: {session.sessionId.slice(0, 18)}...
             </span>
-            <h1 className="font-serif font-bold text-base sm:text-lg text-gray-900 dark:text-gray-100 line-clamp-1">
+            <h1 className="font-serif font-bold text-base sm:text-lg text-gray-950 dark:text-gray-50 line-clamp-1 leading-snug">
               &ldquo;{session.rawQuery}&rdquo;
             </h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <span
-            className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-full border ${
-              isConnected
-                ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
-                : 'border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300'
-            }`}
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          <Badge
+            variant={isConnected ? 'success' : 'warning'}
+            size="sm"
+            dot
+            icon={<Radio className="w-3 h-3" />}
           >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-              }`}
-            />
-            <span>{isConnected ? 'Live Chamber Stream' : 'Syncing'}</span>
-          </span>
+            {isConnected ? 'Live Chamber Stream' : 'Syncing'}
+          </Badge>
         </div>
-      </div>
+      </GlassCard>
 
       {/* Phase Tracker */}
       <PhaseTracker
@@ -393,24 +407,27 @@ export default function SessionPage({
 
           {/* Framing Card */}
           {session.framing && (
-            <div className="p-4 rounded-xl border border-gray-200/80 dark:border-gray-800/80 bg-white/70 dark:bg-gray-900/40 text-xs">
-              <h4 className="font-serif font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                Neutral Framing Boundaries
-              </h4>
-              <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-3 italic">
+            <GlassCard padded="md" className="!rounded-[16px] text-xs space-y-2.5">
+              <div className="flex items-center gap-2">
+                <Compass className="w-3.5 h-3.5 text-indigo-500" />
+                <h4 className="font-serif font-bold text-gray-950 dark:text-gray-50">
+                  Neutral Framing Boundaries
+                </h4>
+              </div>
+              <p className="text-gray-700 dark:text-gray-300 leading-relaxed italic">
                 {session.framing.restatedQuestion}
               </p>
-              <div className="space-y-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-                <span className="font-semibold block text-gray-700 dark:text-gray-300">
+              <div className="space-y-1.5 text-[11px] text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-white/10">
+                <span className="font-semibold block text-gray-800 dark:text-gray-200">
                   Decision Vectors:
                 </span>
-                <ul className="list-disc pl-4 space-y-0.5">
+                <ul className="list-disc pl-4 space-y-1">
                   {session.framing.coreDecisions.map((d, i) => (
                     <li key={i}>{d}</li>
                   ))}
                 </ul>
               </div>
-            </div>
+            </GlassCard>
           )}
         </div>
 
@@ -418,7 +435,7 @@ export default function SessionPage({
         <div className="lg:col-span-2">
           <DebateFeed
             events={events}
-            onSelectPersona={(id) => setSelectedPersona(getPersonaById(id))}
+            onSelectPersona={(id) => setSelectedPersona(findPersonaById(id) ?? null)}
           />
         </div>
       </div>

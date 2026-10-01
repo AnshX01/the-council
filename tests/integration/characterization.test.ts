@@ -199,7 +199,7 @@ describe('Baseline Characterization Suite (Golden Invariants)', () => {
         return mockProvider.generateStructured(prompt, schema, options);
       },
       async healthCheck() {
-        return { isHealthy: true, provider: 'gemini' };
+        return { ok: true, latencyMs: 1 };
       },
     };
 

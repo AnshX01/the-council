@@ -90,11 +90,11 @@ describe('Deliberation Engine & State Machine Integration', () => {
     expect(session.ratificationCycles[0].cycleOutcome).toBe('REVISION_REQUIRED');
     expect(session.ratificationCycles[1].cycleOutcome).toBe('UNANIMOUS_PASS');
 
-    // Cycle 1 had an amendment
+    // Cycle 1 had a hard objection from contrarian
     const cycle1Votes = session.ratificationCycles[0].votes;
-    expect(cycle1Votes['contrarian']?.vote).toBe('SIGN_OFF_WITH_AMENDMENT');
+    expect(cycle1Votes['contrarian']?.vote).toBe('OBJECT');
 
-    // Cycle 2 had all sign offs
+    // Cycle 2 had all sign offs (contrarian resolved after revision)
     const cycle2Votes = session.ratificationCycles[1].votes;
     expect(cycle2Votes['contrarian']?.vote).toBe('SIGN_OFF');
   });
@@ -193,5 +193,71 @@ describe('Deliberation Engine & State Machine Integration', () => {
 
     await expect(engine.run()).rejects.toThrow(/CALL_BUDGET_EXCEEDED/);
     expect(engine.getSession().currentPhase).toBe('FAILED');
+  });
+
+  it('streams jury conversation dialogue events (peer_response) during cross-examination', async () => {
+    mockProvider.setScenario('UNANIMOUS_CONSENSUS');
+    const events: CouncilSSEEvent[] = [];
+
+    const engine = new DeliberationEngine(
+      'Should an autonomous vehicle prioritize passenger safety or pedestrian safety?',
+      { maxCrossExamRounds: 1, maxRatificationCycles: 1 },
+      mockProvider
+    );
+
+    engine.addEventListener((e) => events.push(e));
+    await engine.run();
+
+    const dialogueEvents = events.filter(
+      (e) => e.event === 'persona_message' && (e.payload as any).dialogueType === 'peer_response'
+    );
+
+    // Each active persona engages with at least 2 peers in cross-exam
+    expect(dialogueEvents.length).toBeGreaterThanOrEqual(16); // 8 personas * 2 responses
+    for (const evt of dialogueEvents) {
+      const payload = evt.payload as any;
+      expect(payload.targetPersonaId).toBeDefined();
+      expect(['AGREE', 'CHALLENGE', 'CONCEDE']).toContain(payload.action);
+      expect(payload.content.length).toBeGreaterThan(5);
+    }
+
+    const checkpointEvents = events.filter(
+      (e) => e.event === 'persona_message' && (e.payload as any).dialogueType === 'position_statement'
+    );
+    expect(checkpointEvents.length).toBe(8);
+  });
+
+  it('exits cross-examination loop early when outcomeConsensusReached is achieved', async () => {
+    // UNANIMOUS_CONSENSUS scenario in mock sets outcomeConsensusReached: true
+    mockProvider.setScenario('UNANIMOUS_CONSENSUS');
+
+    const engine = new DeliberationEngine(
+      'Which ship is the real Ship of Theseus: physical material or continuous form?',
+      { maxCrossExamRounds: 8, maxRatificationCycles: 1 }, // Allowed up to 8 rounds
+      mockProvider
+    );
+
+    const verdict = await engine.run();
+    const session = engine.getSession();
+
+    // Since mock achieves outcome consensus in round 2, it should exit in round 2 instead of running all 8 rounds
+    expect(session.crossExamRounds.length).toBe(2);
+    expect(verdict.isUnanimous).toBe(true);
+    expect(session.convergenceDrafts[1].outcomeConsensusReached).toBe(true);
+  });
+
+  it('locks ratification to amendments-only when outcome is already agreed, converting dissent to amendment', async () => {
+    // Set scenario where outcome was agreed in cross-exam
+    mockProvider.setScenario('UNANIMOUS_CONSENSUS');
+
+    const engine = new DeliberationEngine(
+      'Should an emergency ventilator go to patient A or patient B?',
+      { maxCrossExamRounds: 2, maxRatificationCycles: 1 },
+      mockProvider
+    );
+
+    const verdict = await engine.run();
+    expect(verdict.isUnanimous).toBe(true);
+    expect(verdict.survivingObjections.length).toBe(0);
   });
 });

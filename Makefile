@@ -1,6 +1,21 @@
-.PHONY: all install dev build start test test-unit test-e2e test-all test-live lint docker-build docker-up clean
+.PHONY: all install dev build start test test-unit test-e2e test-all test-live lint docker-build docker-up clean council verify backup restore reset-data
 
 all: install build test-all
+
+council:
+	npm run council
+
+verify:
+	npm run verify
+
+backup:
+	npm run backup
+
+restore:
+	npm run restore
+
+reset-data:
+	npm run reset-data
 
 install:
 	npm install

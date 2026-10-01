@@ -16,6 +16,7 @@ export type CouncilEventType =
   | 'ratification_vote'
   | 'ratification_cycle_complete'
   | 'persona_unavailable'
+  | 'verifier_update'
   | 'final_verdict'
   | 'session_error'
   | 'done';
@@ -40,6 +41,11 @@ export type PersonaMessageEvent = BaseSSEEvent<'persona_message', {
   roundNumber?: number;
   content: string;
   confidenceScore?: number;
+  /** 'peer_response' = a direct address to another persona; 'position_statement' = final updated stance */
+  dialogueType?: 'peer_response' | 'position_statement';
+  /** Set when dialogueType === 'peer_response' */
+  targetPersonaId?: PersonaId;
+  action?: 'AGREE' | 'CHALLENGE' | 'CONCEDE';
 }>;
 
 export type PositionUpdateEvent = BaseSSEEvent<'position_update', {
@@ -66,6 +72,8 @@ export type ModeratorDraftEvent = BaseSSEEvent<'moderator_draft', {
   varianceScore: number;
   remainingDisagreements: string[];
   keyAlignmentPoints?: string[];
+  /** True when the moderator determines that all (or near-all) members agree on the same concrete named outcome */
+  outcomeConsensusReached?: boolean;
 }>;
 
 export type RatificationVoteEvent = BaseSSEEvent<'ratification_vote', {
@@ -88,6 +96,14 @@ export type PersonaUnavailableEvent = BaseSSEEvent<'persona_unavailable', {
   reason: string;
 }>;
 
+export type VerifierUpdateEvent = BaseSSEEvent<'verifier_update', {
+  taskType: 'DETERMINISTIC' | 'JUDGMENT';
+  status: 'PASS' | 'FAIL' | 'AMBIGUOUS' | 'ERROR';
+  solutionCount: number;
+  solutions: any[];
+  executionDetails: string;
+}>;
+
 export type FinalVerdictEvent = BaseSSEEvent<'final_verdict', FinalVerdict>;
 
 export type SessionErrorEvent = BaseSSEEvent<'session_error', {
@@ -108,6 +124,7 @@ export type CouncilSSEEvent =
   | RatificationVoteEvent
   | RatificationCycleCompleteEvent
   | PersonaUnavailableEvent
+  | VerifierUpdateEvent
   | FinalVerdictEvent
   | SessionErrorEvent
   | DoneEvent;

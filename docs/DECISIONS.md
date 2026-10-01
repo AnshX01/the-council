@@ -58,3 +58,40 @@
   2. Configurable monthly/daily USD spend cap in Settings, tracked via a local `usage_ledger` table.
   3. Pre-flight check before starting a deliberation: if current usage exceeds the spend cap, the session is rejected with `SPEND_CAP_EXCEEDED` until the cap is raised.
 - **Consequences:** Prevents unexpected API bills while keeping all budget controls local and private.
+
+---
+
+## ADR-007: SQLite Driver Selection (`node:sqlite` Built-in) & Database Decoupling
+
+- **Status:** Accepted
+- **Context:** Node.js v24 LTS provides built-in `node:sqlite` (`DatabaseSync`), which requires zero external binary builds (e.g. node-gyp, python build chains) on Windows. The DurableRunner and repositories needed clean dependency injection of database handles for isolated in-memory test suites.
+- **Decision:** Use `DatabaseSync` from `node:sqlite`. Support optional database injection across all repositories and `DurableRunner` (`options.db`), ensuring isolated test executions do not bleed state into `./data/council.db`.
+- **Consequences:** Tests run in microsecond in-memory isolation. Zero C++ compiler compilation hurdles on Windows.
+
+---
+
+## ADR-008: Dedicated Playwright Port Isolation
+
+- **Status:** Accepted
+- **Context:** The standard Next.js dev server runs on port 3000. Stale zombie processes or active user sessions on port 3000 previously caused Playwright test runs to fail.
+- **Decision:** Configure Playwright to use a dedicated test port (`3100`), configurable via `process.env.TEST_PORT`, and launch an isolated Next.js production server with mock provider enabled for end-to-end tests.
+- **Consequences:** End-to-end tests run reliably without port collisions with normal user sessions.
+
+---
+
+## ADR-009: Engine Abort Signal & Post-Cancellation Event Suppression
+
+- **Status:** Accepted
+- **Context:** In-flight deliberation tasks could continue emitting persona messages and consuming LLM calls after a user or test issued a cancellation request.
+- **Decision:** Implement explicit `abort()` on `DeliberationEngine`. In `emit()`, immediately suppress all subsequent event dispatches once aborted. In `checkBudgetAndTimeout()`, throw `DELIBERATION_ABORTED`.
+- **Consequences:** Immediate halt on cancellation; zero rogue events emitted after cancellation.
+
+---
+
+## ADR-010: Tailwind-Merge Bundling Configuration in Next.js
+
+- **Status:** Accepted
+- **Context:** Next.js production build (`next build`) experienced server vendor-chunk resolution issues with `tailwind-merge` and `lucide-react`.
+- **Decision:** Explicitly mark `transpilePackages: ['lucide-react', 'tailwind-merge']` in `next.config.ts`.
+- **Consequences:** Production Next.js build compiles cleanly with optimal chunk splitting.
+

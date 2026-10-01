@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ThemeToggle } from './ThemeToggle';
 import { ApiKeyModal } from './ApiKeyModal';
-import { Shield, Sparkles, Key, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Shield, Sparkles, AlertTriangle, PlusCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
 
 export function Navbar() {
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
@@ -41,17 +42,17 @@ export function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full border-b border-gray-200/80 dark:border-gray-800/80 bg-white/80 dark:bg-black/80 backdrop-blur-md transition-smooth">
+      <header className="sticky top-0 z-40 w-full glass-header transition-all">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link
             href="/"
-            className="flex items-center gap-2.5 group transition-smooth focus:outline-none"
+            className="flex items-center gap-3 group transition-transform duration-200 hover:scale-[1.01] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-[12px] p-1 -ml-1"
           >
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-sm group-hover:scale-105 transition-smooth">
-              <Shield className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-[10px] bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-sm shadow-indigo-500/25 border border-white/20">
+              <Shield className="w-4 h-4 stroke-[2.2]" />
             </div>
             <div>
-              <span className="font-serif text-lg font-semibold tracking-wide text-gray-900 dark:text-gray-100 block leading-tight">
+              <span className="font-serif text-lg font-semibold tracking-tight text-gray-950 dark:text-gray-50 block leading-tight">
                 The Council
               </span>
               <span className="text-[10px] tracking-widest uppercase text-gray-500 dark:text-gray-400 font-sans font-medium">
@@ -60,36 +61,30 @@ export function Navbar() {
             </div>
           </Link>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <Link
               href="/"
-              className="text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-smooth hidden sm:inline-block"
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-[10px] text-gray-600 dark:text-gray-300 hover:text-gray-950 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
             >
-              New Deliberation
+              <PlusCircle className="w-3.5 h-3.5 text-gray-400" />
+              <span>New Deliberation</span>
             </Link>
 
             {/* Engine / API Key Status Trigger */}
             <button
               type="button"
               onClick={() => setIsKeyModalOpen(true)}
-              className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition-smooth ${
-                hasKey
-                  ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60'
-                  : 'border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100/60'
-              }`}
+              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-full transition-transform active:scale-95"
               title="Click to configure Google Gemini API Key and Model"
             >
-              {hasKey ? (
-                <>
-                  <Sparkles className="w-3 h-3 text-emerald-500" />
-                  <span>{engineLabel}</span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="w-3 h-3 text-amber-500" />
-                  <span>{engineLabel}</span>
-                </>
-              )}
+              <Badge
+                variant={hasKey ? 'success' : 'warning'}
+                size="sm"
+                icon={hasKey ? <Sparkles className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                className="cursor-pointer hover:opacity-90"
+              >
+                {engineLabel}
+              </Badge>
             </button>
 
             <ThemeToggle />
