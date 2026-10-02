@@ -15,6 +15,7 @@ import {
   UsageRepository,
 } from '@/lib/storage/repository';
 import { getDurableRunner } from '@/lib/runner/durableRunner';
+import { resolveEngineConfig } from '@/lib/config/engine';
 import { apiErrorResponse, apiSuccessResponse } from '@/lib/api/error';
 import { validateLocalhostRequest, SECURITY_HEADERS } from '@/lib/api/securityGuard';
 
@@ -122,7 +123,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 3. Create durable session record
+  // 3. Create durable session record with unified engine configuration
+  const engineConfig = resolveEngineConfig();
+  const options = parsed.data.options || {};
+  const forceMock = options.mockMode === true;
+  const resolvedEngineMode = forceMock ? 'simulation' : engineConfig.mode;
+  const resolvedModel = options.modelId || engineConfig.model || settings.defaultModel;
+
   const sessionId = `sess_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
   const title = parsed.data.title || parsed.data.query.slice(0, 60) + (parsed.data.query.length > 60 ? '...' : '');
 
@@ -130,9 +137,14 @@ export async function POST(req: NextRequest) {
     id: sessionId,
     title,
     query: parsed.data.query,
-    options: parsed.data.options || {},
+    options: {
+      ...options,
+      mockMode: resolvedEngineMode === 'simulation',
+    },
     tags: parsed.data.tags || [],
-    model_used: parsed.data.options?.modelId || settings.defaultModel,
+    model_used: resolvedModel,
+    engine_mode: resolvedEngineMode,
+    provider_id: 'gemini',
   });
 
   // 4. Record idempotency key if provided

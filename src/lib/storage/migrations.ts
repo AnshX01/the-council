@@ -91,4 +91,12 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: '002_session_engine_mode',
+    up: `
+      ALTER TABLE sessions ADD COLUMN engine_mode TEXT DEFAULT 'simulation';
+      ALTER TABLE sessions ADD COLUMN provider_id TEXT DEFAULT 'gemini';
+    `,
+  },
 ];

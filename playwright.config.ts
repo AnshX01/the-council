@@ -1,6 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const TEST_PORT = process.env.TEST_PORT || '3100';
+const TEST_DB_PATH = process.env.DATABASE_PATH || './data/test-e2e.db';
+
+// Guard: Refuse to run tests against primary development database (R10)
+const normalizedPath = TEST_DB_PATH.replace(/\\/g, '/');
+if (normalizedPath.endsWith('/council.db') || normalizedPath === './data/council.db' || normalizedPath === 'data/council.db') {
+  throw new Error(`[R10 Guard Violation] Refusing to run tests against primary development database (${TEST_DB_PATH}). Must use isolated test database.`);
+}
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -35,6 +42,7 @@ export default defineConfig({
     env: {
       PORT: TEST_PORT,
       USE_MOCK_PROVIDER: 'true',
+      DATABASE_PATH: TEST_DB_PATH,
     },
   },
 });

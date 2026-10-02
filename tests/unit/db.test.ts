@@ -38,4 +38,20 @@ describe('node:sqlite in Node 24', () => {
     expect(results[0].id).toBe('sess_1');
     db.close();
   });
+
+  it('resolves database path with respect to DATABASE_PATH environment override (R10)', async () => {
+    const { getResolvedDatabasePath } = await import('@/lib/storage/db');
+    const originalEnv = process.env.DATABASE_PATH;
+    try {
+      process.env.DATABASE_PATH = './data/custom-test.db';
+      const resolved = getResolvedDatabasePath();
+      expect(resolved).toContain('custom-test.db');
+    } finally {
+      if (originalEnv) {
+        process.env.DATABASE_PATH = originalEnv;
+      } else {
+        delete process.env.DATABASE_PATH;
+      }
+    }
+  });
 });

@@ -11,7 +11,12 @@ import path from 'node:path';
 import { MIGRATIONS } from './migrations';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
-const DB_PATH = path.join(DATA_DIR, 'council.db');
+const DEFAULT_DB_PATH = path.join(DATA_DIR, 'council.db');
+
+export function getResolvedDatabasePath(customPath?: string): string {
+  const p = customPath || process.env.DATABASE_PATH || DEFAULT_DB_PATH;
+  return path.isAbsolute(p) ? p : path.join(process.cwd(), p);
+}
 
 export interface DatabaseConfig {
   dbPath?: string;
@@ -26,7 +31,7 @@ export class CouncilDatabase {
     if (config.inMemory) {
       this.db = new DatabaseSync(':memory:');
     } else {
-      const targetPath = config.dbPath || DB_PATH;
+      const targetPath = getResolvedDatabasePath(config.dbPath);
       const targetDir = path.dirname(targetPath);
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true });

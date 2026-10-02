@@ -7,5 +7,8 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     exclude: ['tests/e2e/**', '**/node_modules/**'],
+    env: {
+      DATABASE_PATH: './data/test-vitest.db',
+    },
   },
 });

@@ -6,6 +6,8 @@ import {
   selectTranscriptRows,
   selectDissentRecord,
   selectInteractionMap,
+  selectPhaseState,
+  selectInteractionGraph,
   PHASES,
 } from "@/lib/ui/selectors";
 import { CouncilSSEEvent } from "@/types/events";
@@ -312,6 +314,142 @@ describe("UI Pure Data Selectors (src/lib/ui/selectors.ts)", () => {
       const optToSkep = pairs.find((p) => p.speakerId === "optimist" && p.targetId === "skeptic");
       expect(optToSkep?.count).toBe(1);
       expect(optToSkep?.agreeCount).toBe(1);
+    });
+  });
+
+  describe("selectPhaseState (R4 Single Phase Reducer)", () => {
+    it("accurately derives phase, index, round and completion from stream events", () => {
+      const events: CouncilSSEEvent[] = [
+        {
+          event: "phase_started",
+          sessionId: "sess-1",
+          timestamp: new Date().toISOString(),
+          payload: { phase: "PHASE_0_FRAMING", phaseIndex: 0, description: "Framing" },
+        },
+        {
+          event: "phase_started",
+          sessionId: "sess-1",
+          timestamp: new Date().toISOString(),
+          payload: { phase: "PHASE_2_CROSS_EXAM", phaseIndex: 2, description: "Cross exam" },
+        },
+        {
+          event: "cross_exam_round_complete",
+          sessionId: "sess-1",
+          timestamp: new Date().toISOString(),
+          payload: { roundNumber: 2, completedAt: new Date().toISOString() },
+        },
+        {
+          event: "moderator_draft",
+          sessionId: "sess-1",
+          timestamp: new Date().toISOString(),
+          payload: {
+            draftRound: 2,
+            draftConsensusText: "Draft",
+            alignmentScore: 78,
+            varianceScore: 12,
+            remainingDisagreements: [],
+          },
+        },
+        {
+          event: "final_verdict",
+          sessionId: "sess-1",
+          timestamp: new Date().toISOString(),
+          payload: {
+            isUnanimous: true,
+            status: "UNANIMOUS_CONSENSUS",
+            actionableConclusion: "Done",
+            verdictOneLiner: "Done",
+            keySupportingReasons: [],
+            criticalCaveatsAndRisks: [],
+            personaShiftSummaries: {} as any,
+            ratifiedBy: [],
+            survivingObjections: [],
+            totalRoundsDeliberated: 2,
+            totalCallsUsed: 10,
+            durationMs: 5000,
+            completedAt: new Date().toISOString(),
+          },
+        },
+      ];
+
+      const state = selectPhaseState(events);
+      expect(state.currentPhase).toBe("PHASE_5_FINAL_OUTPUT");
+      expect(state.phaseIndex).toBe(5);
+      expect(state.phaseLabel).toBe("Final Verdict");
+      expect(state.roundNumber).toBe(2);
+      expect(state.convergenceScore).toBe(78);
+      expect(state.isCompleted).toBe(true);
+      expect(state.isFailed).toBe(false);
+    });
+  });
+
+  describe("selectInteractionGraph (RT4 §5 Network & Matrix Reducer)", () => {
+    it("aggregates nodes, links, and pairwise matrix while guarding against self-interactions", () => {
+      const events: CouncilSSEEvent[] = [
+        {
+          event: "persona_message",
+          sessionId: "sess-1",
+          timestamp: new Date().toISOString(),
+          payload: {
+            personaId: "skeptic",
+            phase: "PHASE_2_CROSS_EXAM",
+            content: "I challenge the optimistic premise",
+            targetPersonaId: "optimist",
+            action: "CHALLENGE",
+          },
+        },
+        {
+          event: "persona_message",
+          sessionId: "sess-1",
+          timestamp: new Date().toISOString(),
+          payload: {
+            personaId: "optimist",
+            phase: "PHASE_2_CROSS_EXAM",
+            content: "I agree with parts of your critique",
+            targetPersonaId: "skeptic",
+            action: "AGREE",
+          },
+        },
+        {
+          event: "persona_message",
+          sessionId: "sess-1",
+          timestamp: new Date().toISOString(),
+          payload: {
+            personaId: "pragmatist",
+            phase: "PHASE_2_CROSS_EXAM",
+            content: "Self talk error",
+            targetPersonaId: "pragmatist", // Self-addressed stance (R5)
+            action: "AGREE",
+          },
+        },
+      ];
+
+      const graph = selectInteractionGraph(events);
+
+      // Total interactions should exclude self-talk
+      expect(graph.totalInteractions).toBe(2);
+      expect(graph.nodes.length).toBeGreaterThanOrEqual(9);
+
+      const skepNode = graph.nodes.find((n: any) => n.id === "skeptic");
+      expect(skepNode?.challengesInitiated).toBe(1);
+      expect(skepNode?.agreementsReceived).toBe(1);
+
+      const optNode = graph.nodes.find((n: any) => n.id === "optimist");
+      expect(optNode?.challengesReceived).toBe(1);
+      expect(optNode?.agreementsInitiated).toBe(1);
+
+      // Matrix verification
+      const skepToOpt = graph.matrix["skeptic"]["optimist"];
+      expect(skepToOpt.count).toBe(1);
+      expect(skepToOpt.challengeCount).toBe(1);
+
+      const optToSkep = graph.matrix["optimist"]["skeptic"];
+      expect(optToSkep.count).toBe(1);
+      expect(optToSkep.agreeCount).toBe(1);
+
+      // Self-talk in matrix should remain 0
+      const pragSelf = graph.matrix["pragmatist"]["pragmatist"];
+      expect(pragSelf.count).toBe(0);
     });
   });
 });

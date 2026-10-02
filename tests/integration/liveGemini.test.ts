@@ -9,17 +9,18 @@
 import { describe, it, expect } from 'vitest';
 import { GeminiProvider } from '@/lib/providers/gemini';
 import { DeliberationEngine } from '@/lib/council/engine';
+import { resolveEngineConfig } from '@/lib/config/engine';
 
-const apiKey = process.env.GEMINI_API_KEY;
-const isLiveTestRunnable = Boolean(apiKey && apiKey.length > 5 && !apiKey.includes('your_gemini'));
+const engineConfig = resolveEngineConfig();
+const isLiveTestRunnable = Boolean(engineConfig.apiKey && engineConfig.mode === 'live');
 
 describe('Live Google Gemini API Smoke Test', () => {
   it.skipIf(!isLiveTestRunnable)(
     'executes a real end-to-end session against Gemini API with reduced rounds',
     async () => {
-      console.log('Running Live Gemini Smoke Test using model:', process.env.GEMINI_MODEL || 'gemini-3.5-flash');
+      console.log('Running Live Gemini Smoke Test using model:', engineConfig.model);
 
-      const provider = new GeminiProvider();
+      const provider = new GeminiProvider(engineConfig.apiKey, engineConfig.model);
       const health = await provider.healthCheck();
       expect(health.ok).toBe(true);
 

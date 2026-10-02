@@ -113,7 +113,7 @@ export default function HomePage() {
           options: {
             maxCrossExamRounds: rounds,
             maxRatificationCycles: settings.maxRatificationCycles || 2,
-            mockMode: engineStatus.status === "simulation",
+            mockMode: engineStatus.mode === "simulation",
           },
         }),
       });

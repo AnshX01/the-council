@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.resolve(__dirname),
   transpilePackages: ["lucide-react"],
   serverExternalPackages: ["@google/genai"],
+  devIndicators: false,
 };
 
 export default nextConfig;

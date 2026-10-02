@@ -17,6 +17,7 @@ import {
 import { eventBus } from './eventBus';
 import { DeliberationEngine } from '../council/engine';
 import { getLLMProvider } from '../providers/factory';
+import { resolveEngineConfig } from '../config/engine';
 import { CouncilSSEEvent } from '@/types/events';
 
 export interface RunnerOptions {
@@ -176,14 +177,23 @@ export class DurableRunner {
       this.sessionRepo.renewLease(sessionId, this.workerId, this.leaseDurationMs);
     }, this.heartbeatIntervalMs);
 
-    // Resolve provider
+    // Resolve provider using unified engine configuration
+    const engineConfig = resolveEngineConfig();
     const settings = this.settingsRepo.getSettings();
     const options = session.options || {};
+    const isSimulation =
+      session.engine_mode === 'simulation' ||
+      options.mockMode === true ||
+      options.forceMock === true ||
+      engineConfig.mode === 'simulation';
+
+    const resolvedModel = session.model_used || options.modelId || engineConfig.model || settings.defaultModel;
+
     const provider = getLLMProvider({
-      forceMock: options.mockMode ?? (process.env.USE_MOCK_PROVIDER === 'true'),
-      apiKey: options.apiKey || process.env.GEMINI_API_KEY,
-      modelId: options.modelId || settings.defaultModel,
-      mockDelayMs: options.mockDelayMs ?? 15,
+      forceMock: isSimulation,
+      apiKey: options.apiKey || engineConfig.apiKey,
+      modelId: resolvedModel,
+      mockDelayMs: options.mockDelayMs ?? (isSimulation ? 15 : undefined),
       mockScenario: options.mockScenario,
     });
 
@@ -230,12 +240,15 @@ export class DurableRunner {
       this.activeJobs.delete(sessionId);
 
       // Record final session metrics
+      const finalEngineMode = provider.providerId === 'gemini' ? 'live' : 'simulation';
       this.sessionRepo.updateSession(sessionId, {
         status: 'COMPLETED',
         current_phase: updatedSession.currentPhase,
         verdict_type: verdict.status,
         verdict_payload: verdict as any,
         call_count: updatedSession.totalCallsExecuted,
+        engine_mode: finalEngineMode,
+        provider_id: provider.providerId,
         finished_at: Date.now(),
       });
 

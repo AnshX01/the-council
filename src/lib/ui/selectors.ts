@@ -6,6 +6,7 @@
  */
 
 import { PersonaId } from '@/types/persona';
+import { ALL_PERSONAS } from '@/lib/council/personas';
 import { DeliberationPhase, DeliberationSession, FinalVerdict, ShiftRecord } from '@/types/session';
 import { CouncilEventType, CouncilSSEEvent } from '@/types/events';
 
@@ -563,3 +564,216 @@ export function selectInteractionMap(events: CouncilSSEEvent[]): InteractionPair
 
   return Array.from(map.values());
 }
+
+// ── R4: selectPhaseState Canonical Phase Reducer ──────────────
+export interface PhaseState {
+  currentPhase: DeliberationPhase;
+  phaseIndex: number;
+  phaseLabel: string;
+  roundNumber: number;
+  maxRounds: number;
+  isCompleted: boolean;
+  isFailed: boolean;
+  convergenceScore: number;
+  phaseDurations?: Record<string, number>;
+}
+
+export function selectPhaseState(events: CouncilSSEEvent[] = []): PhaseState {
+  let currentPhase: DeliberationPhase = 'PHASE_0_FRAMING';
+  let roundNumber = 1;
+  let maxRounds = 3;
+  let isCompleted = false;
+  let isFailed = false;
+  let convergenceScore = 0;
+  const phaseDurations: Record<string, number> = {};
+  let phaseStartTime = 0;
+  let activePhase: string = 'PHASE_0_FRAMING';
+
+  for (const ev of events) {
+    const evTime = ev.timestamp ? new Date(ev.timestamp).getTime() : Date.now();
+
+    if (ev.event === 'phase_started') {
+      const p = ev.payload;
+      if (p.phase) {
+        if (phaseStartTime > 0 && activePhase) {
+          phaseDurations[activePhase] = (phaseDurations[activePhase] || 0) + (evTime - phaseStartTime);
+        }
+        currentPhase = p.phase;
+        activePhase = p.phase;
+        phaseStartTime = evTime;
+      }
+    } else if (ev.event === 'cross_exam_round_complete') {
+      const p = ev.payload;
+      if (typeof p.roundNumber === 'number') {
+        roundNumber = p.roundNumber;
+      }
+    } else if (ev.event === 'persona_message') {
+      const p = ev.payload;
+      if (typeof p.roundNumber === 'number') {
+        roundNumber = p.roundNumber;
+      }
+    } else if (ev.event === 'moderator_draft') {
+      const p = ev.payload;
+      if (typeof p.alignmentScore === 'number') {
+        convergenceScore = p.alignmentScore;
+      }
+    } else if (ev.event === 'final_verdict') {
+      isCompleted = true;
+      currentPhase = 'PHASE_5_FINAL_OUTPUT';
+    } else if (ev.event === 'session_error') {
+      isFailed = true;
+    }
+  }
+
+  const phaseIndex = PHASES.findIndex((p) => p.id === currentPhase);
+  const validIndex = phaseIndex >= 0 ? phaseIndex : 0;
+
+  return {
+    currentPhase,
+    phaseIndex: validIndex,
+    phaseLabel: PHASES[validIndex]?.label || 'Framing',
+    roundNumber,
+    maxRounds,
+    isCompleted,
+    isFailed,
+    convergenceScore,
+    phaseDurations,
+  };
+}
+
+// ── RT4 §5: selectInteractionGraph Network & Matrix Reducer ──
+export interface InteractionNode {
+  id: PersonaId;
+  name: string;
+  colorHex: string;
+  totalSpoken: number;
+  challengesInitiated: number;
+  challengesReceived: number;
+  agreementsInitiated: number;
+  agreementsReceived: number;
+}
+
+export interface InteractionLink {
+  sourceId: PersonaId;
+  targetId: PersonaId;
+  count: number;
+  agreeCount: number;
+  challengeCount: number;
+  concedeCount: number;
+  primaryStance: 'AGREE' | 'CHALLENGE' | 'CONCEDE';
+}
+
+export interface InteractionMatrixCell {
+  sourceId: PersonaId;
+  targetId: PersonaId;
+  count: number;
+  agreeCount: number;
+  challengeCount: number;
+  concedeCount: number;
+}
+
+export interface InteractionGraph {
+  nodes: InteractionNode[];
+  links: InteractionLink[];
+  matrix: Record<PersonaId, Record<PersonaId, InteractionMatrixCell>>;
+  totalInteractions: number;
+}
+
+export function selectInteractionGraph(events: CouncilSSEEvent[] = []): InteractionGraph {
+  const nodesMap: Map<PersonaId, InteractionNode> = new Map();
+
+  for (const p of ALL_PERSONAS) {
+    nodesMap.set(p.id, {
+      id: p.id,
+      name: p.name,
+      colorHex: p.colorHex,
+      totalSpoken: 0,
+      challengesInitiated: 0,
+      challengesReceived: 0,
+      agreementsInitiated: 0,
+      agreementsReceived: 0,
+    });
+  }
+
+  const linksMap: Map<string, InteractionLink> = new Map();
+  const matrix: Partial<Record<PersonaId, Record<PersonaId, InteractionMatrixCell>>> = {};
+
+  for (const p1 of ALL_PERSONAS) {
+    matrix[p1.id] = {} as Record<PersonaId, InteractionMatrixCell>;
+    for (const p2 of ALL_PERSONAS) {
+      matrix[p1.id]![p2.id] = {
+        sourceId: p1.id,
+        targetId: p2.id,
+        count: 0,
+        agreeCount: 0,
+        challengeCount: 0,
+        concedeCount: 0,
+      };
+    }
+  }
+
+  let totalInteractions = 0;
+
+  for (const ev of events) {
+    if (ev.event === 'persona_message') {
+      const p = ev.payload as any;
+      const speakerId = (p.speakerId || p.personaId) as PersonaId;
+      const targetId = p.targetPersonaId as PersonaId;
+
+      if (speakerId && nodesMap.has(speakerId)) {
+        nodesMap.get(speakerId)!.totalSpoken++;
+      }
+
+      if (speakerId && targetId && speakerId !== targetId && nodesMap.has(speakerId) && nodesMap.has(targetId)) {
+        totalInteractions++;
+        const sNode = nodesMap.get(speakerId)!;
+        const tNode = nodesMap.get(targetId)!;
+
+        const cell = matrix[speakerId]![targetId];
+        cell.count++;
+
+        const linkKey = `${speakerId}->${targetId}`;
+        if (!linksMap.has(linkKey)) {
+          linksMap.set(linkKey, {
+            sourceId: speakerId,
+            targetId: targetId,
+            count: 0,
+            agreeCount: 0,
+            challengeCount: 0,
+            concedeCount: 0,
+            primaryStance: 'AGREE',
+          });
+        }
+        const link = linksMap.get(linkKey)!;
+        link.count++;
+
+        if (p.action === 'CHALLENGE') {
+          sNode.challengesInitiated++;
+          tNode.challengesReceived++;
+          cell.challengeCount++;
+          link.challengeCount++;
+        } else if (p.action === 'AGREE') {
+          sNode.agreementsInitiated++;
+          tNode.agreementsReceived++;
+          cell.agreeCount++;
+          link.agreeCount++;
+        } else if (p.action === 'CONCEDE') {
+          cell.concedeCount++;
+          link.concedeCount++;
+        }
+
+        link.primaryStance =
+          link.challengeCount > link.agreeCount ? 'CHALLENGE' : link.agreeCount > 0 ? 'AGREE' : 'CONCEDE';
+      }
+    }
+  }
+
+  return {
+    nodes: Array.from(nodesMap.values()),
+    links: Array.from(linksMap.values()),
+    matrix: matrix as Record<PersonaId, Record<PersonaId, InteractionMatrixCell>>,
+    totalInteractions,
+  };
+}
+
+

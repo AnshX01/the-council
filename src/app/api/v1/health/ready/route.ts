@@ -9,6 +9,7 @@ import { NextRequest } from 'next/server';
 import crypto from 'node:crypto';
 import { getDatabase } from '@/lib/storage/db';
 import { getDurableRunner } from '@/lib/runner/durableRunner';
+import { resolveEngineConfig } from '@/lib/config/engine';
 import { apiSuccessResponse, apiErrorResponse } from '@/lib/api/error';
 import { SECURITY_HEADERS } from '@/lib/api/securityGuard';
 
@@ -41,17 +42,32 @@ export async function GET(req: NextRequest) {
     // Non-fatal
   }
 
-  // 3. Provider check (safe, no secret leakage)
-  const isMock = process.env.USE_MOCK_PROVIDER === 'true';
-  const hasKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5);
-  const providerStatus = isMock ? 'mock_ready' : hasKey ? 'configured' : 'missing_api_key';
+  // 3. Engine configuration check (unified resolver, strictly no raw API keys)
+  const engine = resolveEngineConfig();
+  const safeEngine = {
+    mode: engine.mode,
+    reason: engine.reason,
+    keyConfigured: Boolean(engine.apiKey && engine.mode === 'live'),
+    keySource: engine.keySource,
+    keyLast4: engine.keyLast4,
+    model: engine.model,
+    modelSource: engine.modelSource,
+  };
 
   return apiSuccessResponse(
     {
       status: 'ready',
       database: dbStatus,
       runner: runnerStatus,
-      provider: providerStatus,
+      provider: engine.mode === 'live' ? 'configured' : 'mock_ready',
+      engine: safeEngine,
+      probes: {
+        gemini: {
+          keyConfigured: safeEngine.keyConfigured,
+          model: safeEngine.model,
+          mode: safeEngine.mode,
+        },
+      },
       timestamp: new Date().toISOString(),
     },
     200,

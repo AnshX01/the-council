@@ -7,6 +7,19 @@
  * curve inward across the center table.
  */
 
+export const TABLE_CONSTANTS = {
+  DESIGN_SIZE: 640,
+  CENTER: 320,
+  SEAT_RING_RADIUS: 232, // Rs
+  SEAT_TILE_RADIUS: 30,  // rt
+  MODERATOR_TILE_RADIUS: 38,
+  MODERATOR_RING_OFFSET: 8, // placed at Rs + 8 = 240
+  TABLE_RADIUS: 190,     // Rt = Rs - rt - 12 (232 - 30 - 12 = 190)
+  INNER_RING_FACTOR: 0.62, // 0.62 * Rt = 117.8
+  MEDALLION_RADIUS: 62,
+  LABEL_OFFSET: 14,      // Rs + rt + 14 = 276
+} as const;
+
 export interface SeatPersona {
   id: string;
   name: string;
@@ -93,17 +106,21 @@ export function computeSeatLayout(
     let angleDeg = (angleRad * (180 / Math.PI)) % 360;
     if (angleDeg < 0) angleDeg += 360;
 
-    const x = Math.round((centerX + radius * Math.cos(angleRad)) * 100) / 100;
-    const y = Math.round((centerY + radius * Math.sin(angleRad)) * 100) / 100;
-
-    // Tangent angle in degrees for rotating labels/chips toward the center
-    const tangentAngleDeg = Math.round(((angleDeg + 90) % 360) * 10) / 10;
-
     const isModerator = i === 0 && (
       p.id.toLowerCase() === 'moderator' || 
       (p.role && p.role.toLowerCase() === 'moderator') || 
       modIndex === 0
     );
+
+    const effectiveRadius = isModerator && tableSize === 640
+      ? radius + TABLE_CONSTANTS.MODERATOR_RING_OFFSET
+      : radius;
+
+    const x = Math.round((centerX + effectiveRadius * Math.cos(angleRad)) * 100) / 100;
+    const y = Math.round((centerY + effectiveRadius * Math.sin(angleRad)) * 100) / 100;
+
+    // Tangent angle in degrees for rotating labels/chips toward the center
+    const tangentAngleDeg = Math.round(((angleDeg + 90) % 360) * 10) / 10;
 
     return {
       id: p.id,

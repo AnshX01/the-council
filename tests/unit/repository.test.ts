@@ -222,5 +222,35 @@ describe('Storage Repositories with SQLite (node:sqlite in-memory)', () => {
       const exceededCap = usageRepo.checkSpendCap(0.10);
       expect(exceededCap.allowed).toBe(false);
     });
+
+    it('persists and retrieves engine_mode and provider_id', () => {
+      const liveSession = sessionRepo.createSession({
+        id: 'sess_live_1',
+        title: 'Live Deliberation',
+        query: 'What is the future of reasoning?',
+        options: {},
+        engine_mode: 'live',
+        provider_id: 'gemini',
+        model_used: 'gemini-3.5-flash',
+      });
+
+      expect(liveSession.engine_mode).toBe('live');
+      expect(liveSession.provider_id).toBe('gemini');
+      expect(liveSession.model_used).toBe('gemini-3.5-flash');
+
+      const retrieved = sessionRepo.getSession('sess_live_1');
+      expect(retrieved?.engine_mode).toBe('live');
+      expect(retrieved?.provider_id).toBe('gemini');
+      expect(retrieved?.model_used).toBe('gemini-3.5-flash');
+
+      const simSession = sessionRepo.createSession({
+        id: 'sess_sim_1',
+        title: 'Sim Deliberation',
+        query: 'Simulation query',
+        options: {},
+      });
+      expect(simSession.engine_mode).toBe('simulation');
+      expect(simSession.provider_id).toBe('gemini');
+    });
   });
 });

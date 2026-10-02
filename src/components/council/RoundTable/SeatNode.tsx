@@ -142,15 +142,23 @@ export const SeatNode: React.FC<SeatNodeProps> = ({
         onClick={onClick}
         onFocus={onFocus}
         className={cn(
-          "relative flex items-center justify-center rounded-2xl cursor-pointer transition-all duration-200 outline-none",
+          "relative flex items-center justify-center rounded-full cursor-pointer transition-all duration-200 outline-none",
           isModerator ? "w-[76px] h-[76px]" : "w-[60px] h-[60px]",
-          "bg-[var(--bg-tertiary)]",
+          "bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] shadow-none",
           isUnavailable ? "opacity-35 grayscale" : "opacity-100",
           focused && "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-primary)]",
           isSelected && "ring-2 ring-[var(--accent)]",
           isSpeaking && "scale-[1.06]"
         )}
       >
+        {/* Speaking Concentric Halo Rings */}
+        {isSpeaking && (
+          <>
+            <span className="absolute -inset-2 rounded-full border-2 border-[var(--accent)] animate-ping opacity-25 pointer-events-none" />
+            <span className="absolute -inset-1 rounded-full border border-[var(--accent)] opacity-60 pointer-events-none" />
+          </>
+        )}
+
         {/* Confidence Progress Ring SVG */}
         {!isModerator && confidence !== null && (
           <svg
@@ -180,11 +188,11 @@ export const SeatNode: React.FC<SeatNodeProps> = ({
           </svg>
         )}
 
-        {/* Persona Glyph */}
+        {/* Persona Glyph Concentric Inner Disc */}
         <div
           className={cn(
-            "flex items-center justify-center rounded-xl",
-            isModerator ? "w-11 h-11" : "w-9 h-9"
+            "flex items-center justify-center rounded-full",
+            isModerator ? "w-12 h-12" : "w-10 h-10"
           )}
           style={{ color }}
         >

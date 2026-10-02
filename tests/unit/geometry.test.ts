@@ -128,4 +128,53 @@ describe('Council Seating Geometry Engine', () => {
     expect(anchor.y).toBeLessThanOrEqual(600);
     expect(anchor.y).toBeGreaterThan(seat.y);
   });
+
+  describe("R2 Concentric Table Disc & Seat Geometry", () => {
+    it("guarantees disc and seat ring centers coincide within 0.5px and gap is 8-16px for N=3..12 and N=9 default", async () => {
+      const { TABLE_CONSTANTS } = await import("@/lib/council/geometry");
+      const discCenter = { x: TABLE_CONSTANTS.CENTER, y: TABLE_CONSTANTS.CENTER };
+      const tableRadius = TABLE_CONSTANTS.TABLE_RADIUS; // 190
+
+      for (let n = 3; n <= 12; n++) {
+        const personas = createMockPersonas(n);
+        const layout = computeSeatLayout(personas, 640, 88);
+        const ringCenter = { x: layout.centerX, y: layout.centerY };
+
+        // |discCenter - ringCenter| < 0.5px
+        const centerOffset = Math.hypot(discCenter.x - ringCenter.x, discCenter.y - ringCenter.y);
+        expect(centerOffset).toBeLessThan(0.5);
+
+        // Moderator at -90 deg (270 deg)
+        const moderator = layout.seats[0];
+        expect(moderator.angleDeg).toBe(270);
+
+        // Gap between disc edge and every seat-tile edge is 8–16px
+        for (const seat of layout.seats) {
+          const tileRadius = seat.isModerator
+            ? TABLE_CONSTANTS.MODERATOR_TILE_RADIUS
+            : TABLE_CONSTANTS.SEAT_TILE_RADIUS;
+          const distFromCenter = Math.hypot(seat.x - ringCenter.x, seat.y - ringCenter.y);
+          const innerTileEdge = distFromCenter - tileRadius;
+          const gap = innerTileEdge - tableRadius;
+          expect(gap).toBeGreaterThanOrEqual(8);
+          expect(gap).toBeLessThanOrEqual(16);
+
+          // All seat boxes inside [0, 640]^2
+          expect(seat.x - tileRadius).toBeGreaterThanOrEqual(0);
+          expect(seat.x + tileRadius).toBeLessThanOrEqual(640);
+          expect(seat.y - tileRadius).toBeGreaterThanOrEqual(0);
+          expect(seat.y + tileRadius).toBeLessThanOrEqual(640);
+
+          // Label placement is radially outward (Rs + rt + 14)
+          const labelDist = distFromCenter + tileRadius + TABLE_CONSTANTS.LABEL_OFFSET;
+          const labelX = ringCenter.x + labelDist * Math.cos(seat.angleRad);
+          const labelY = ringCenter.y + labelDist * Math.sin(seat.angleRad);
+          expect(labelX).toBeGreaterThanOrEqual(15);
+          expect(labelX).toBeLessThanOrEqual(625);
+          expect(labelY).toBeGreaterThanOrEqual(15);
+          expect(labelY).toBeLessThanOrEqual(625);
+        }
+      }
+    });
+  });
 });

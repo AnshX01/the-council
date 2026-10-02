@@ -68,78 +68,81 @@ export class GeminiProvider implements LLMProvider {
     );
   }
 
-  async healthCheck(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
+  async healthCheck(): Promise<{
+    ok: boolean;
+    latencyMs: number;
+    error?: string;
+    model?: string;
+    errorCode?: string;
+    cleanMessage?: string;
+  }> {
     const start = Date.now();
-    const candidateModels = Array.from(
-      new Set([
-        this.modelId,
-        'gemini-3-flash-preview',
-        'gemini-3.5-flash',
-        'gemini-3.5-flash-lite',
-        'gemini-3.1-flash-lite',
-        'gemini-flash-latest',
-        'gemini-flash-lite-latest',
-        'gemini-3.8-flash',
-      ])
-    );
+    const model = this.modelId;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
 
-    let lastError = '';
-    for (const model of candidateModels) {
-      // Per-attempt timeout: 5s so the health check never hangs on a slow/missing model
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000);
-      try {
-        const response = await this.client.models.generateContent({
+    try {
+      const response = await this.client.models.generateContent({
+        model,
+        contents: 'ping',
+        config: {
+          maxOutputTokens: 5,
+          temperature: 0.1,
+          abortSignal: controller.signal,
+        },
+      });
+      clearTimeout(timer);
+      const text = response?.text;
+      if (text !== undefined) {
+        return {
+          ok: true,
           model,
-          contents: 'ping',
-          config: {
-            maxOutputTokens: 5,
-            temperature: 0.1,
-            abortSignal: controller.signal,
-          },
-        });
-        clearTimeout(timer);
-        const text = response?.text;
-        if (text !== undefined) {
-          // If our current model was failing, update to the verified working candidate
-          if (
-            this.modelId !== model &&
-            (this.modelId.includes('1.5') ||
-              this.modelId.includes('2.0') ||
-              this.modelId.includes('2.5'))
-          ) {
-            this.modelId = model;
-          }
-          return { ok: true, latencyMs: Date.now() - start };
-        }
-      } catch (err: any) {
-        clearTimeout(timer);
-        lastError = this.extractCleanErrorMessage(err);
-        const msg = String(err?.message || '').toLowerCase();
-        const isAbort = this.isAbortError(err);
-        if (!isAbort) {
-          // Non-timeout errors: check if it's a model-not-found type
-          // (try next model) vs. a fatal error like bad API key (stop early)
-          const isModelIssue =
-            msg.includes('not found') ||
-            msg.includes('404') ||
-            msg.includes('unsupported') ||
-            msg.includes('no longer available') ||
-            msg.includes('not supported');
-          if (!isModelIssue) {
-            // Fatal error (e.g. invalid API key, auth failure) — no point trying others
-            break;
-          }
-        }
-        // Timed out on this model OR model not found → try next candidate
+          latencyMs: Date.now() - start,
+        };
       }
-    }
+      return {
+        ok: false,
+        model,
+        latencyMs: Date.now() - start,
+        errorCode: 'EMPTY_RESPONSE',
+        cleanMessage: 'Gemini returned an empty response',
+        error: 'Gemini returned an empty response',
+      };
+    } catch (err: any) {
+      clearTimeout(timer);
+      const cleanMessage = this.extractCleanErrorMessage(err);
+      let errorCode = 'GENERATE_FAILED';
+      if (this.isAbortError(err)) {
+        errorCode = 'TIMEOUT';
+      } else if (
+        cleanMessage.toLowerCase().includes('api_key') ||
+        cleanMessage.toLowerCase().includes('auth') ||
+        cleanMessage.toLowerCase().includes('permission') ||
+        cleanMessage.toLowerCase().includes('credential')
+      ) {
+        errorCode = 'AUTH_ERROR';
+      } else if (
+        cleanMessage.toLowerCase().includes('not found') ||
+        cleanMessage.toLowerCase().includes('404')
+      ) {
+        errorCode = 'MODEL_NOT_FOUND';
+      } else if (
+        cleanMessage.toLowerCase().includes('resource_exhausted') ||
+        cleanMessage.toLowerCase().includes('rate') ||
+        cleanMessage.toLowerCase().includes('quota')
+      ) {
+        errorCode = 'RATE_LIMIT';
+      }
 
-    return {
-      ok: false,
-      latencyMs: Date.now() - start,
-      error: lastError,
-    };
+      return {
+        ok: false,
+        model,
+        latencyMs: Date.now() - start,
+        errorCode,
+        cleanMessage,
+        error: cleanMessage,
+      };
+    }
   }
 
   private async callGeminiWithFallback(params: {

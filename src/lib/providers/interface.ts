@@ -56,5 +56,12 @@ export interface LLMProvider {
   /**
    * Pings the underlying provider to check health and connectivity.
    */
-  healthCheck(): Promise<{ ok: boolean; latencyMs: number; error?: string }>;
+  healthCheck(): Promise<{
+    ok: boolean;
+    latencyMs: number;
+    error?: string;
+    model?: string;
+    errorCode?: string;
+    cleanMessage?: string;
+  }>;
 }

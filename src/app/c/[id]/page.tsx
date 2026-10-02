@@ -181,16 +181,30 @@ export default function ChamberPage({ params }: PageProps) {
               Deliberation Chamber
             </span>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm sm:text-base font-bold text-[var(--text-primary)] truncate max-w-md" title={sAny.title || session?.rawQuery || "Deliberating..."}>
-                {sAny.title || session?.rawQuery || "Convening Council..."}
+              <h1
+                className="text-sm sm:text-base font-bold text-[var(--text-primary)] line-clamp-2"
+                title={(sAny.title || session?.rawQuery || "Convening Council...").replace(/^Evaluate the moral and systemic implications of:\s*/i, "").trim()}
+              >
+                {(sAny.title || session?.rawQuery || "Convening Council...").replace(/^Evaluate the moral and systemic implications of:\s*/i, "").trim()}
               </h1>
               {isRunning && (
                 <span className="w-2 h-2 rounded-full bg-[var(--status-low)] animate-pulse flex-shrink-0" />
               )}
             </div>
-            <span className="text-[11px] font-mono text-[var(--text-muted)] truncate">
-              Session #{sessionId.slice(0, 12)}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-[var(--text-muted)] truncate">
+                Session #{sessionId.slice(0, 12)}
+              </span>
+              {sAny.engine_mode === 'live' ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--status-low)]/10 text-[var(--status-low)] font-mono font-medium">
+                  Live · {sAny.model_used || 'gemini'}
+                </span>
+              ) : (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)] font-mono font-medium">
+                  SIMULATED
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -268,10 +282,10 @@ export default function ChamberPage({ params }: PageProps) {
         phaseDurations={sAny.phaseDurations}
       />
 
-      {/* Main Dual-Column Deliberation Chamber (>= 1024px) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Column: Sticky Round Table Stage (5 Columns) */}
-        <div className="lg:col-span-6 xl:col-span-5 lg:sticky lg:top-4 flex flex-col items-center">
+      {/* Main Dual-Column Deliberation Chamber (R1: Stack below xl, exactly 640px + 1fr at >=1280px) */}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,640px)_minmax(0,1fr)] gap-8 items-start">
+        {/* Left Column: Sticky Round Table Stage (Isolated & Contained) */}
+        <div className="w-full max-w-[640px] xl:sticky xl:top-4 flex flex-col items-center isolate overflow-hidden z-0">
           <RoundTable
             currentSpeakerId={currentSpeakerId}
             activeInteraction={activeInteraction}
@@ -291,8 +305,8 @@ export default function ChamberPage({ params }: PageProps) {
           />
         </div>
 
-        {/* Right Column: Segmented Tabs (7 Columns) */}
-        <div className="lg:col-span-6 xl:col-span-7 flex flex-col gap-4">
+        {/* Right Column: Segmented Tabs (Relative, z-10 with opaque bg-primary backing) */}
+        <div className="flex flex-col gap-4 relative z-10 bg-[var(--bg-primary)] min-w-0">
           {/* Atlas Segmented Tab Bar */}
           <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2">
             <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />

@@ -10,12 +10,40 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
-import { ArrowDown, Filter, User, Compass, Check, Zap, Hand } from "lucide-react";
+import {
+  ArrowDown,
+  Filter,
+  User,
+  Crown,
+  Compass,
+  Sparkles,
+  Scale,
+  Hammer,
+  Network,
+  Hourglass,
+  Heart,
+  Flame,
+  Check,
+  Zap,
+  Hand,
+} from "lucide-react";
 import { CouncilSSEEvent } from "@/types/events";
 import { PersonaId } from "@/types/persona";
 import { findPersonaById } from "@/lib/council/personas";
 import { selectTranscriptRows, TranscriptItem } from "@/lib/ui/selectors";
 import { cn } from "@/lib/utils";
+
+const GLYPH_MAP: Record<string, React.ElementType> = {
+  Crown,
+  Compass,
+  Sparkles,
+  Scale,
+  Hammer,
+  Network,
+  Hourglass,
+  Heart,
+  Flame,
+};
 
 export interface TranscriptStreamProps {
   events: CouncilSSEEvent[];
@@ -185,15 +213,21 @@ export const TranscriptStream: React.FC<TranscriptStreamProps> = ({
                 {/* Header: Persona Avatar, Name, Stance Badge, Seq, Confidence */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div
-                      className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold"
-                      style={{
-                        backgroundColor: `${color}20`,
-                        color,
-                      }}
-                    >
-                      {persona?.name ? persona.name.charAt(0) : "M"}
-                    </div>
+                    {(() => {
+                      const GlyphIcon = (persona?.avatarGlyph && GLYPH_MAP[persona.avatarGlyph]) || User;
+                      return (
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{
+                            backgroundColor: `${color}20`,
+                            color,
+                          }}
+                          title={persona?.name || row.personaId}
+                        >
+                          <GlyphIcon size={12} strokeWidth={2.2} />
+                        </div>
+                      );
+                    })()}
                     <span className="text-xs font-semibold text-[var(--text-primary)]">
                       {persona?.name || row.personaId}
                     </span>

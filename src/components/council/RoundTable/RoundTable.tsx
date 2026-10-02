@@ -1,14 +1,13 @@
 /**
- * Origin: The Council Round Table v3 (Section 6)
+ * Origin: The Council Round Table v3 / v4 (Section 6 & RT4 §1-§5)
  * Hero Circular Council Table:
  * - Moderator anchored at 12 o'clock (head of table)
  * - Tonal glass table disc with inner rim, tick marks, and speaker spotlight
  * - 9 seated personas with chair-back arcs, outward labels, and confidence rings
- * - Live SVG dialogue arcs with stance encoding and fading trails
+ * - Live SVG dialogue arcs with directed arrowheads and traveling pulse particles
  * - Center convergence / ratification medallion
- * - Dynamic collision-free speech bubble
- * - Post-deliberation interaction map toggle
- * - Replay scrubber pill
+ * - Docked live speaker caption strip under the stage (R3)
+ * - Segmented Table | Map | Matrix | List view switcher
  * - Accessible List View toggle & roving tabindex keyboard navigation
  */
 
@@ -17,14 +16,14 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ALL_PERSONAS,
-  MODERATOR,
   COUNCIL_MEMBERS,
   PersonaProfile,
   findPersonaById,
 } from "@/lib/council/personas";
 import {
   computeSeatLayout,
-  computeSpeechBubbleAnchor,
+  computeInteractionArc,
+  TABLE_CONSTANTS,
   SeatPersona,
 } from "@/lib/council/geometry";
 import { SeatNode } from "./SeatNode";
@@ -43,10 +42,9 @@ import { CouncilSSEEvent } from "@/types/events";
 import {
   selectConfidenceTrajectories,
   selectSeatStates,
-  selectInteractionMap,
-  InteractionPair,
+  selectInteractionGraph,
 } from "@/lib/ui/selectors";
-import { List, CircleDot, Network } from "lucide-react";
+import { List, CircleDot, Network, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ActiveInteraction {
@@ -92,6 +90,8 @@ const STATIC_SEAT_PERSONAS: SeatPersona[] = ALL_PERSONAS.map((p) => ({
   color: p.colorHex,
 }));
 
+export type TableViewMode = "table" | "map" | "matrix" | "list";
+
 export const RoundTable: React.FC<RoundTableProps> = ({
   memberStatuses = {} as Record<PersonaId, "active" | "unavailable">,
   currentSpeakerId,
@@ -114,14 +114,21 @@ export const RoundTable: React.FC<RoundTableProps> = ({
   onReplayStepChange,
   className = "",
 }) => {
-  const [viewMode, setViewMode] = useState<"round" | "list">("round");
+  const [viewMode, setViewMode] = useState<TableViewMode>("table");
   const [selectedPersona, setSelectedPersona] = useState<PersonaProfile | null>(null);
   const [focusedSeatIndex, setFocusedSeatIndex] = useState<number>(0);
   const [arcTrail, setArcTrail] = useState<ArcTrailEntry[]>([]);
-  const [showInteractionMap, setShowInteractionMap] = useState<boolean>(false);
   const stageRef = useRef<HTMLDivElement>(null);
 
-  const layout = useMemo(() => computeSeatLayout(STATIC_SEAT_PERSONAS, 640, 72), []);
+  // Compute layout using R2 & RT4 design space constants (640x640, Rs=232, Rt=190)
+  const layout = useMemo(
+    () => computeSeatLayout(STATIC_SEAT_PERSONAS, TABLE_CONSTANTS.DESIGN_SIZE, 88),
+    []
+  );
+
+  const center = { x: TABLE_CONSTANTS.CENTER, y: TABLE_CONSTANTS.CENTER };
+  const tableDiscRadius = TABLE_CONSTANTS.TABLE_RADIUS;
+  const innerRingRadius = tableDiscRadius * TABLE_CONSTANTS.INNER_RING_FACTOR;
 
   // Compute confidence trajectories and seat states
   const trajectories = useMemo(() => {
@@ -144,9 +151,9 @@ export const RoundTable: React.FC<RoundTableProps> = ({
     );
   }, [trajectories, currentSpeakerId, activeInteraction, memberStatuses]);
 
-  // Track arc trails (keep last 3 arcs with fading opacities)
+  // Track arc trails (keep last 3 arcs with fading opacities, ignoring self-targets R5)
   useEffect(() => {
-    if (activeInteraction) {
+    if (activeInteraction && activeInteraction.sourceId !== activeInteraction.targetId) {
       setArcTrail((prev) => {
         const next = [
           {
@@ -162,15 +169,15 @@ export const RoundTable: React.FC<RoundTableProps> = ({
     }
   }, [activeInteraction]);
 
-  // Aggregate interaction map
-  const interactionMap = useMemo(() => {
-    return selectInteractionMap(allEvents);
+  // Interaction graph reducer (Map & Matrix views)
+  const interactionGraph = useMemo(() => {
+    return selectInteractionGraph(allEvents);
   }, [allEvents]);
 
   // Listen for custom event to toggle list view
   useEffect(() => {
     const handleToggle = () => {
-      setViewMode((v) => (v === "round" ? "list" : "round"));
+      setViewMode((v) => (v === "table" ? "list" : "table"));
     };
     window.addEventListener("council:toggle-table-view", handleToggle);
     return () => window.removeEventListener("council:toggle-table-view", handleToggle);
@@ -192,18 +199,14 @@ export const RoundTable: React.FC<RoundTableProps> = ({
       e.preventDefault();
       const seat = layout.seats[focusedSeatIndex];
       const p = findPersonaById(seat.id as PersonaId);
-      if (p) setSelectedPersona(p);
+      if (p) {
+        setSelectedPersona(p);
+        onSelectPersona?.(p);
+      }
     }
   };
 
-  const center = { x: layout.centerX, y: layout.centerY };
-  const tableDiscRadius = layout.radius * 0.58; // ≈ 144px radius filled table
-
-  // Active speaker speech bubble coordinates
   const speakingSeat = layout.seats.find((s) => s.id === currentSpeakerId);
-  const bubbleAnchor = speakingSeat
-    ? computeSpeechBubbleAnchor(speakingSeat, center, 640)
-    : null;
 
   return (
     <div
@@ -211,7 +214,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
       onKeyDown={handleKeyDown}
       className={cn("flex flex-col items-center select-none w-full", className)}
     >
-      {/* Stage Header Controls (List View & Interaction Map) */}
+      {/* Stage Header Controls (Table | Map | Matrix | List Segmented Control) */}
       <div className="w-full flex items-center justify-between px-2 mb-2">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
@@ -225,44 +228,77 @@ export const RoundTable: React.FC<RoundTableProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-1">
-          {status === "completed" && interactionMap.length > 0 && (
-            <button
-              onClick={() => setShowInteractionMap(!showInteractionMap)}
-              className={cn(
-                "p-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors",
-                showInteractionMap
-                  ? "bg-[var(--accent)] text-[var(--bg-primary)]"
-                  : "bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-              )}
-              title="Toggle interaction network map"
-              aria-label="Toggle interaction network map"
-            >
-              <Network size={14} />
-              <span className="hidden sm:inline text-[11px] font-medium">Network</span>
-            </button>
-          )}
-
+        {/* View Mode Segmented Switcher */}
+        <div className="flex items-center p-0.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
           <button
-            onClick={() => setViewMode(viewMode === "round" ? "list" : "round")}
-            className="p-1.5 rounded-lg text-xs flex items-center gap-1.5 bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-            title="Toggle between circular table and accessible list view"
-            aria-label="Toggle list view"
+            type="button"
+            onClick={() => setViewMode("table")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+              viewMode === "table"
+                ? "bg-[var(--bg-tertiary)] text-[var(--text-primary)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            )}
+            title="Circular Round Table"
+            aria-label="Table View"
           >
-            {viewMode === "round" ? <List size={14} /> : <CircleDot size={14} />}
-            <span className="hidden sm:inline text-[11px] font-medium">
-              {viewMode === "round" ? "List View" : "Table View"}
-            </span>
+            <CircleDot size={13} />
+            <span className="hidden sm:inline">Table</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("map")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+              viewMode === "map"
+                ? "bg-[var(--bg-tertiary)] text-[var(--text-primary)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            )}
+            title="Interaction Network Map"
+            aria-label="Network Map View"
+          >
+            <Network size={13} />
+            <span className="hidden sm:inline">Map</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("matrix")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+              viewMode === "matrix"
+                ? "bg-[var(--bg-tertiary)] text-[var(--text-primary)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            )}
+            title="Pairwise Interaction Matrix"
+            aria-label="Matrix View"
+          >
+            <LayoutGrid size={13} />
+            <span className="hidden sm:inline">Matrix</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("list")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+              viewMode === "list"
+                ? "bg-[var(--bg-tertiary)] text-[var(--text-primary)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            )}
+            title="Accessible Member List"
+            aria-label="List View"
+          >
+            <List size={13} />
+            <span className="hidden sm:inline">List</span>
           </button>
         </div>
       </div>
 
-      {viewMode === "round" ? (
+      {viewMode === "table" && (
         /* ── CIRCULAR ROUND TABLE STAGE (640x640 Vector Layout) ── */
         <div
           role="region"
           aria-label="The Council Round Table"
-          className="relative w-full max-w-[640px] aspect-square flex items-center justify-center overflow-visible"
+          className="relative w-full max-w-[640px] aspect-square flex items-center justify-center overflow-hidden isolate z-0"
         >
           {/* Base SVG Canvas: Table Surface, Rim, Ticks, Spotlight & Arcs */}
           <svg
@@ -294,7 +330,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
               )}
             </defs>
 
-            {/* Table Surface Disc */}
+            {/* Concentric Table Surface Disc (R2) */}
             <circle
               cx={center.x}
               cy={center.y}
@@ -302,7 +338,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
               fill="url(#tableSurfaceGrad)"
             />
 
-            {/* Inner Rim (1px edge at 6% opacity) */}
+            {/* Inner Rim (1px edge at subtle border opacity) */}
             <circle
               cx={center.x}
               cy={center.y}
@@ -312,15 +348,16 @@ export const RoundTable: React.FC<RoundTableProps> = ({
               strokeWidth={1}
             />
 
-            {/* Faint Concentric Inner Ring at 0.40 R */}
+            {/* Faint Concentric Inner Ring at 0.62·Rt (R2) */}
             <circle
               cx={center.x}
               cy={center.y}
-              r={tableDiscRadius * 0.4}
+              r={innerRingRadius}
               fill="none"
               stroke="var(--border-subtle)"
               strokeWidth={1}
               strokeDasharray="4 6"
+              strokeOpacity={0.6}
             />
 
             {/* Speaker Spotlight */}
@@ -335,7 +372,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
 
             {/* 9 Seat Angle Tick Marks on the Table Rim */}
             {layout.seats.map((seat) => {
-              const tickInner = tableDiscRadius - 5;
+              const tickInner = tableDiscRadius - 6;
               const tickOuter = tableDiscRadius;
               const x1 = center.x + tickInner * Math.cos(seat.angleRad);
               const y1 = center.y + tickInner * Math.sin(seat.angleRad);
@@ -351,53 +388,31 @@ export const RoundTable: React.FC<RoundTableProps> = ({
                   y2={y2}
                   stroke="var(--text-muted)"
                   strokeWidth={1.5}
-                  strokeOpacity={0.4}
+                  strokeOpacity={0.35}
                 />
               );
             })}
 
-            {/* Live Dialogue Arcs with Fading Trail */}
-            {!showInteractionMap &&
-              arcTrail.map((entry, idx) => {
-                const s = layout.seats.find((st) => st.id === entry.sourceId);
-                const t = layout.seats.find((st) => st.id === entry.targetId);
-                if (!s || !t) return null;
+            {/* Live Dialogue Arcs with Fading Trail, Directed Arrowheads & Particles */}
+            {arcTrail.map((entry, idx) => {
+              const s = layout.seats.find((st) => st.id === entry.sourceId);
+              const t = layout.seats.find((st) => st.id === entry.targetId);
+              if (!s || !t) return null;
 
-                const opacity = idx === 0 ? 1.0 : idx === 1 ? 0.6 : 0.3;
-                return (
-                  <InteractionArc
-                    key={`arc-trail-${entry.timestamp}-${idx}`}
-                    source={{ x: s.x, y: s.y }}
-                    target={{ x: t.x, y: t.y }}
-                    center={center}
-                    stance={entry.stance}
-                    speakerColor={s.color}
-                    opacity={opacity}
-                    isActive={idx === 0}
-                  />
-                );
-              })}
-
-            {/* Aggregated Interaction Network Map Overlay */}
-            {showInteractionMap &&
-              interactionMap.map((pair, pIdx) => {
-                const s = layout.seats.find((st) => st.id === pair.speakerId);
-                const t = layout.seats.find((st) => st.id === pair.targetId);
-                if (!s || !t) return null;
-
-                return (
-                  <InteractionArc
-                    key={`map-pair-${pIdx}`}
-                    source={{ x: s.x, y: s.y }}
-                    target={{ x: t.x, y: t.y }}
-                    center={center}
-                    stance={pair.challengeCount > pair.agreeCount ? "CHALLENGE" : "AGREE"}
-                    speakerColor={s.color}
-                    opacity={Math.min(1.0, 0.4 + pair.count * 0.15)}
-                    isActive={false}
-                  />
-                );
-              })}
+              const opacity = idx === 0 ? 1.0 : idx === 1 ? 0.6 : 0.3;
+              return (
+                <InteractionArc
+                  key={`arc-trail-${entry.timestamp}-${idx}`}
+                  source={{ x: s.x, y: s.y }}
+                  target={{ x: t.x, y: t.y }}
+                  center={center}
+                  stance={entry.stance}
+                  speakerColor={s.color}
+                  opacity={opacity}
+                  isActive={idx === 0}
+                />
+              );
+            })}
           </svg>
 
           {/* Center Medallion (Convergence Ring / Verdict Seal) */}
@@ -416,7 +431,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
             />
           </div>
 
-          {/* HTML Seated Nodes */}
+          {/* HTML Seated Nodes (True Circular Stack with Concentric Discs & Halo Rings) */}
           {layout.seats.map((seat, index) => {
             const persona = findPersonaById(seat.id as PersonaId) || {
               id: seat.id as PersonaId,
@@ -457,40 +472,251 @@ export const RoundTable: React.FC<RoundTableProps> = ({
               />
             );
           })}
-
-          {/* Speaking Speech Bubble (Center-facing with 3-line clamp) */}
-          {speakingSeat && bubbleAnchor && lastSpeakerSnippet && (
-            <div
-              style={{
-                left: `${bubbleAnchor.x}px`,
-                top: `${bubbleAnchor.y}px`,
-              }}
-              className="absolute -translate-x-1/2 -translate-y-1/2 z-30 max-w-[240px] pointer-events-auto animate-spring-scale"
-            >
-              <div className="p-3 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] shadow-none">
-                <div className="flex items-center justify-between mb-1 text-[10px] font-mono text-[var(--text-muted)]">
-                  <span className="font-semibold text-[var(--text-primary)]">
-                    {speakingSeat.name}
-                  </span>
-                  <span>speaking</span>
-                </div>
-                <p className="line-clamp-3 leading-relaxed text-[var(--text-secondary)]">
-                  {lastSpeakerSnippet}
-                </p>
-                <button
-                  onClick={() => {
-                    const p = findPersonaById(speakingSeat.id as PersonaId);
-                    if (p) setSelectedPersona(p);
-                  }}
-                  className="mt-1 text-[10px] font-medium text-[var(--accent)] hover:underline"
-                >
-                  Open statement →
-                </button>
-              </div>
-            </div>
-          )}
         </div>
-      ) : (
+      )}
+
+      {viewMode === "map" && (
+        /* ── INTERACTION NETWORK MAP VIEW (RT4 §5) ── */
+        <div
+          role="region"
+          aria-label="The Council Interaction Network Map"
+          className="relative w-full max-w-[640px] aspect-square flex items-center justify-center overflow-hidden isolate z-0"
+        >
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
+            viewBox="0 0 640 640"
+          >
+            <defs>
+              <radialGradient id="mapSurfaceGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="var(--bg-secondary)" />
+                <stop offset="100%" stopColor="var(--bg-tertiary)" />
+              </radialGradient>
+            </defs>
+
+            {/* Subtle background disc */}
+            <circle
+              cx={center.x}
+              cy={center.y}
+              r={tableDiscRadius}
+              fill="url(#mapSurfaceGrad)"
+              opacity={0.3}
+            />
+            <circle
+              cx={center.x}
+              cy={center.y}
+              r={tableDiscRadius}
+              fill="none"
+              stroke="var(--border-subtle)"
+              strokeWidth={1}
+              strokeDasharray="4 6"
+              opacity={0.4}
+            />
+
+            {/* Directed Interaction Links */}
+            {interactionGraph.links.map((link, idx) => {
+              const s = layout.seats.find((st) => st.id === link.sourceId);
+              const t = layout.seats.find((st) => st.id === link.targetId);
+              if (!s || !t) return null;
+
+              const strokeWidth = Math.min(6, 1.5 + link.count * 0.8);
+              const strokeColor = s.color || "#6366F1";
+              const pathD = computeInteractionArc(
+                { x: s.x, y: s.y },
+                { x: t.x, y: t.y },
+                center,
+                { curvature: 0.52 }
+              );
+              const markerId = `map-arrow-${idx}`;
+
+              return (
+                <g key={`map-link-${link.sourceId}-${link.targetId}`} className="pointer-events-none">
+                  <defs>
+                    <marker
+                      id={markerId}
+                      viewBox="0 0 10 10"
+                      refX="6"
+                      refY="5"
+                      markerWidth="4"
+                      markerHeight="4"
+                      orient="auto-start-reverse"
+                    >
+                      <path d="M 0 1 L 8 5 L 0 9 z" fill={strokeColor} opacity={0.8} />
+                    </marker>
+                  </defs>
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={link.primaryStance === "CHALLENGE" ? "6 4" : undefined}
+                    strokeLinecap="round"
+                    strokeOpacity={0.7}
+                    markerEnd={`url(#${markerId})`}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Center Medallion summary for Map */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center justify-center p-3 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-center w-28 h-28 shadow-none">
+            <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)]">
+              Network
+            </span>
+            <span className="text-xl font-bold font-mono text-[var(--text-primary)]">
+              {interactionGraph.totalInteractions}
+            </span>
+            <span className="text-[10px] text-[var(--text-secondary)]">Exchanges</span>
+          </div>
+
+          {/* Seated Nodes on Map */}
+          {layout.seats.map((seat) => {
+            const persona = findPersonaById(seat.id as PersonaId);
+            if (!persona) return null;
+            const nodeData = interactionGraph.nodes.find((n) => n.id === seat.id);
+
+            return (
+              <div
+                key={`map-seat-${seat.id}`}
+                style={{
+                  left: `${seat.x}px`,
+                  top: `${seat.y}px`,
+                }}
+                className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-auto"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPersona(persona);
+                    onSelectPersona?.(persona);
+                  }}
+                  className={cn(
+                    "relative flex items-center justify-center rounded-full cursor-pointer transition-all duration-200",
+                    seat.isModerator
+                      ? "w-12 h-12 opacity-50 bg-[var(--bg-tertiary)] border border-[var(--border-subtle)]"
+                      : "w-14 h-14 bg-[var(--bg-secondary)] border-2 shadow-none hover:scale-105"
+                  )}
+                  style={{ borderColor: seat.color || "#3B82F6" }}
+                  title={`${persona.name}: ${nodeData?.totalSpoken || 0} spoken, ${nodeData?.challengesInitiated || 0} challenges`}
+                >
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: seat.color || "#3B82F6" }}
+                  >
+                    {seat.isModerator ? "M" : seat.name.charAt(0)}
+                  </span>
+                  {!seat.isModerator && (
+                    <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-[var(--accent)] text-[var(--bg-primary)] rounded-full text-[9px] font-mono font-bold">
+                      {nodeData?.totalSpoken || 0}
+                    </span>
+                  )}
+                </button>
+                <span className="mt-1 text-[10px] font-medium text-[var(--text-primary)] whitespace-nowrap">
+                  {seat.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {viewMode === "matrix" && (
+        /* ── PAIRWISE INTERACTION MATRIX VIEW (RT4 §5) ── */
+        <div
+          role="region"
+          aria-label="The Council Interaction Matrix"
+          className="w-full max-w-[640px] flex flex-col gap-3 p-4 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] overflow-x-auto"
+        >
+          <div className="flex items-center justify-between pb-2 border-b border-[var(--border-subtle)]">
+            <span className="text-[11px] font-semibold text-[var(--text-primary)]">
+              Pairwise Exchange Matrix (Rows: Speaker → Columns: Addressed)
+            </span>
+            <span className="text-[10px] font-mono text-[var(--text-muted)]">
+              {interactionGraph.totalInteractions} total interactions
+            </span>
+          </div>
+
+          <table role="grid" className="w-full text-xs text-center border-collapse">
+            <thead>
+              <tr>
+                <th className="p-1 text-left text-[10px] font-mono text-[var(--text-muted)]">
+                  From \ To
+                </th>
+                {COUNCIL_MEMBERS.map((m) => (
+                  <th
+                    key={`col-${m.id}`}
+                    className="p-1 text-[10px] font-medium truncate max-w-[55px]"
+                    style={{ color: m.colorHex }}
+                    title={m.name}
+                  >
+                    {m.name.replace("The ", "").slice(0, 4)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {COUNCIL_MEMBERS.map((rowMember) => (
+                <tr key={`row-${rowMember.id}`} className="border-t border-[var(--border-subtle)]/40">
+                  <td
+                    className="p-1 text-left text-[10px] font-semibold truncate max-w-[65px]"
+                    style={{ color: rowMember.colorHex }}
+                    title={rowMember.name}
+                  >
+                    {rowMember.name.replace("The ", "")}
+                  </td>
+                  {COUNCIL_MEMBERS.map((colMember) => {
+                    if (rowMember.id === colMember.id) {
+                      return (
+                        <td key={`cell-${rowMember.id}-${colMember.id}`} className="p-1 text-[var(--text-muted)] opacity-30 text-[10px]">
+                          —
+                        </td>
+                      );
+                    }
+                    const cell = interactionGraph.matrix[rowMember.id]?.[colMember.id];
+                    const count = cell?.count || 0;
+                    const challenge = cell?.challengeCount || 0;
+                    const agree = cell?.agreeCount || 0;
+
+                    return (
+                      <td
+                        key={`cell-${rowMember.id}-${colMember.id}`}
+                        className={cn(
+                          "p-1 text-[10px] font-mono font-medium rounded transition-colors",
+                          count > 0
+                            ? "bg-[var(--bg-tertiary)] text-[var(--text-primary)] font-bold"
+                            : "text-[var(--text-muted)] opacity-40"
+                        )}
+                        title={`${rowMember.name} → ${colMember.name}: ${count} exchanges (${challenge} challenges, ${agree} agrees)`}
+                      >
+                        {count > 0 ? (
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>{count}</span>
+                            {challenge > agree ? (
+                              <span className="text-[8px] text-[var(--status-urgent)]">⚡</span>
+                            ) : agree > 0 ? (
+                              <span className="text-[8px] text-[var(--status-low)]">✓</span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          "0"
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="pt-2 flex items-center justify-between text-[10px] text-[var(--text-muted)] border-t border-[var(--border-subtle)]">
+            <span>⚡ Dominant Challenge</span>
+            <span>✓ Dominant Agreement</span>
+            <span>Click any seat to open profile</span>
+          </div>
+        </div>
+      )}
+
+      {viewMode === "list" && (
         /* ── ACCESSIBLE LIST VIEW TOGGLE (Alternative Deck) ── */
         <div
           role="region"
@@ -505,7 +731,12 @@ export const RoundTable: React.FC<RoundTableProps> = ({
             return (
               <div
                 key={seat.id}
-                onClick={() => persona && setSelectedPersona(persona)}
+                onClick={() => {
+                  if (persona) {
+                    setSelectedPersona(persona);
+                    onSelectPersona?.(persona);
+                  }
+                }}
                 className={cn(
                   "p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] flex items-center justify-between cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors",
                   isSpeaking && "ring-2 ring-[var(--accent)]"
@@ -544,6 +775,56 @@ export const RoundTable: React.FC<RoundTableProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Docked Speaker Caption (R3: Replaces Floating Speech Bubble) */}
+      {speakingSeat && lastSpeakerSnippet && status === "running" && phase !== "PHASE_5_FINAL_OUTPUT" && (
+        <div
+          role="region"
+          aria-live="polite"
+          className="w-full max-w-[640px] mt-3 p-3 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 text-xs animate-fade-in"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold text-xs"
+              style={{
+                backgroundColor: `${speakingSeat.color || "#3B82F6"}20`,
+                color: speakingSeat.color || "#3B82F6",
+              }}
+            >
+              {speakingSeat.isModerator ? "M" : speakingSeat.name.charAt(0)}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="font-semibold text-[var(--text-primary)] text-xs">
+                  {speakingSeat.name}
+                </span>
+                {activeInteraction?.stance && (
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+                    {activeInteraction.stance}
+                  </span>
+                )}
+                <span className="text-[10px] text-[var(--text-muted)] font-mono">speaking</span>
+              </div>
+              <p className="line-clamp-2 text-xs text-[var(--text-secondary)] leading-relaxed">
+                {lastSpeakerSnippet}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const p = findPersonaById(speakingSeat.id as PersonaId);
+              if (p) {
+                setSelectedPersona(p);
+                onSelectPersona?.(p);
+              }
+            }}
+            className="shrink-0 text-[11px] font-medium text-[var(--accent)] hover:underline whitespace-nowrap"
+          >
+            Open statement →
+          </button>
         </div>
       )}
 

@@ -35,6 +35,8 @@ interface SessionRow {
   verdictType?: string;
   created_at?: string;
   createdAt?: string;
+  engine_mode?: 'live' | 'simulation';
+  model_used?: string;
   total_llm_calls?: number;
 }
 
@@ -314,6 +316,16 @@ function SessionListRow({
       </div>
 
       <div className="flex items-center gap-3 flex-shrink-0">
+        {session.engine_mode === 'live' ? (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--status-low)]/10 text-[var(--status-low)] font-mono font-medium">
+            Live · {session.model_used || 'gemini'}
+          </span>
+        ) : (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)] font-mono font-medium">
+            SIMULATED
+          </span>
+        )}
+
         <span className="text-[11px] font-mono text-[var(--text-muted)]">
           {timeAgo}
         </span>

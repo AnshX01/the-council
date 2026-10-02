@@ -121,7 +121,11 @@ export function useSettings() {
 export interface EngineStatus {
   ok: boolean;
   status: 'healthy' | 'degraded' | 'simulation' | 'down';
+  mode: 'live' | 'simulation';
+  reason?: string;
   model: string;
+  keyLast4?: string;
+  keySource?: string;
   runnerActive: boolean;
   keyConfigured: boolean;
   dbStatus: string;
@@ -131,7 +135,8 @@ export interface EngineStatus {
 export function useEngineStatus() {
   const [engineStatus, setEngineStatus] = useState<EngineStatus>({
     ok: true,
-    status: 'healthy',
+    status: 'simulation',
+    mode: 'simulation',
     model: 'gemini-2.5-flash',
     runnerActive: true,
     keyConfigured: false,
@@ -158,12 +163,14 @@ export function useEngineStatus() {
         readyData = json.data || json;
       }
 
-      const keyConfigured = readyData?.probes?.gemini?.keyConfigured ?? false;
+      const engine = readyData?.engine;
+      const keyConfigured = engine?.keyConfigured ?? readyData?.probes?.gemini?.keyConfigured ?? false;
+      const mode = (engine?.mode || (keyConfigured ? 'live' : 'simulation')) as 'live' | 'simulation';
       const runnerActive = liveData?.runner?.active ?? true;
       const dbStatus = liveData?.database?.status ?? 'healthy';
 
       let status: EngineStatus['status'] = 'healthy';
-      if (!keyConfigured) {
+      if (mode === 'simulation') {
         status = 'simulation';
       } else if (!liveData?.status || liveData.status !== 'alive') {
         status = 'degraded';
@@ -172,7 +179,11 @@ export function useEngineStatus() {
       setEngineStatus({
         ok: liveData?.status === 'alive',
         status,
-        model: readyData?.probes?.gemini?.model || 'gemini-2.5-flash',
+        mode,
+        reason: engine?.reason,
+        keyLast4: engine?.keyLast4,
+        keySource: engine?.keySource,
+        model: engine?.model || readyData?.probes?.gemini?.model || 'gemini-2.5-flash',
         runnerActive,
         keyConfigured,
         dbStatus,

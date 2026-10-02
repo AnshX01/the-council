@@ -195,14 +195,16 @@ export function Sidebar() {
           >
             <span className="flex items-center gap-2 text-[11px] truncate">
               <Cpu size={13} className="text-[var(--text-muted)]" />
-              <span className="truncate">{engineStatus.model}</span>
+              <span className="truncate">
+                {engineStatus.mode === "live" ? `Live · ${engineStatus.model}` : "Simulation"}
+              </span>
             </span>
             <span
               className={cn(
                 "w-1.5 h-1.5 rounded-full",
-                engineStatus.keyConfigured
+                engineStatus.mode === "live"
                   ? "bg-[var(--status-low)]"
-                  : "bg-[var(--status-medium)]"
+                  : "bg-[var(--text-muted)] opacity-50"
               )}
             />
           </Link>
@@ -290,8 +292,8 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Bottom controls: Spend meter, Settings, Theme */}
-      <div className="p-3 border-t border-[var(--border-subtle)] flex flex-col gap-2">
+      {/* Bottom controls: Spend meter, Settings, Theme (R8: Generous bottom clearance) */}
+      <div className="p-3 pb-8 border-t border-[var(--border-subtle)] flex flex-col gap-2">
         <div className="px-1 text-[11px] text-[var(--text-muted)] flex items-center justify-between">
           <span>Spend Cap</span>
           <span className="font-mono text-[var(--text-secondary)]">

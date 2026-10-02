@@ -18,7 +18,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:all": "vitest run && playwright test",
-    "test:live": "vitest run tests/integration/liveGemini.test.ts"
+    "test:live": "vitest run tests/integration/liveGemini.test.ts",
+    "diag:engine": "npx tsx scripts/diag-engine.ts",
+    "clean-test-sessions": "npx tsx scripts/clean-test-sessions.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

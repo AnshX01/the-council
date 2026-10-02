@@ -1,16 +1,17 @@
 /**
- * Origin: The Council Round Table v3 (Section 6)
+ * Origin: The Council Round Table v3 / v4 (Section 6 & RT4 §3)
  * SVG dialogue arc connecting speaker to addressed peer with stance encoding:
- * AGREE: solid with checkmark
- * CHALLENGE: dashed (6 4) with lightning
- * CONCEDE: dotted (1 4) with open hand
- * Trail fading support (1.0 -> 0.6 -> 0.3).
+ * - Directed arrowhead marker pointing to recipient
+ * - Animated traveling pulse particle along the bezier arc
+ * - Stance glyph indicator at arc midpoint
+ * - Fading trail support (1.0 -> 0.6 -> 0.3)
  */
 
 "use client";
 
-import React from "react";
+import React, { useId } from "react";
 import { computeInteractionArc } from "@/lib/council/geometry";
+import { getStanceConfig } from "@/lib/ui/choreography";
 
 export type InteractionStance = "AGREE" | "CHALLENGE" | "CONCEDE" | "NEUTRAL";
 
@@ -33,28 +34,21 @@ export const InteractionArc: React.FC<InteractionArcProps> = ({
   opacity = 1.0,
   isActive = true,
 }) => {
-  const pathD = computeInteractionArc(source, target, center, { curvature: 0.52 });
+  const uniqueId = useId().replace(/[:]/g, "");
 
-  // Stance line styles
-  let strokeDasharray = "none";
-  let strokeLinecap: "round" | "butt" = "round";
-  let markerSymbol = "✓";
-
-  if (stance === "CHALLENGE") {
-    strokeDasharray = "6 4";
-    markerSymbol = "⚡";
-  } else if (stance === "CONCEDE") {
-    strokeDasharray = "1 4";
-    strokeLinecap = "round";
-    markerSymbol = "✋";
-  } else if (stance === "AGREE") {
-    strokeDasharray = "none";
-    markerSymbol = "✓";
+  // Guard against self-addressed stances (R5)
+  if (source.x === target.x && source.y === target.y) {
+    return null;
   }
+
+  const pathD = computeInteractionArc(source, target, center, { curvature: 0.52 });
+  const stanceConfig = getStanceConfig(stance);
 
   // Midpoint approximation for stance glyph
   const midX = Math.round((source.x + target.x) / 2 + (center.x - (source.x + target.x) / 2) * 0.45);
   const midY = Math.round((source.y + target.y) / 2 + (center.y - (source.y + target.y) / 2) * 0.45);
+
+  const markerId = `arrowhead-${stance}-${uniqueId}`;
 
   return (
     <g
@@ -62,6 +56,21 @@ export const InteractionArc: React.FC<InteractionArcProps> = ({
       opacity={opacity}
       aria-hidden="true"
     >
+      <defs>
+        {/* Directed Arrowhead Marker (RT4 §3) */}
+        <marker
+          id={markerId}
+          viewBox="0 0 10 10"
+          refX="6"
+          refY="5"
+          markerWidth="5"
+          markerHeight="5"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 1 L 8 5 L 0 9 z" fill={speakerColor} opacity={opacity} />
+        </marker>
+      </defs>
+
       {/* Background Soft Glow */}
       {isActive && opacity >= 0.8 && (
         <path
@@ -74,15 +83,27 @@ export const InteractionArc: React.FC<InteractionArcProps> = ({
         />
       )}
 
-      {/* Main Trajectory Path */}
+      {/* Main Trajectory Path with Directed Arrowhead */}
       <path
         d={pathD}
         fill="none"
         stroke={speakerColor}
         strokeWidth={1.5}
-        strokeDasharray={strokeDasharray}
-        strokeLinecap={strokeLinecap}
+        strokeDasharray={stanceConfig.dashArray}
+        strokeLinecap="round"
+        markerEnd={`url(#${markerId})`}
       />
+
+      {/* Animated Traveling Pulse Particle (RT4 §3) */}
+      {isActive && opacity >= 0.8 && (
+        <circle r={2.5} fill={speakerColor} opacity={0.9}>
+          <animateMotion
+            path={pathD}
+            dur={stanceConfig.particleSpeed}
+            repeatCount="indefinite"
+          />
+        </circle>
+      )}
 
       {/* Stance Indicator Glyph at Arc Midpoint (Ensures No Color-Only Meaning) */}
       <g transform={`translate(${midX}, ${midY})`}>
@@ -94,7 +115,7 @@ export const InteractionArc: React.FC<InteractionArcProps> = ({
           fill={speakerColor}
           className="font-mono font-bold"
         >
-          {markerSymbol}
+          {stanceConfig.symbol}
         </text>
       </g>
     </g>

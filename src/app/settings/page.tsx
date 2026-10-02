@@ -23,6 +23,10 @@ import {
   ChevronRight,
   ExternalLink,
   Sparkles,
+  Eye,
+  EyeOff,
+  Trash2,
+  Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -86,6 +90,13 @@ export default function SettingsPage() {
   const [testingKey, setTestingKey] = useState(false);
   const [testResult, setTestResult] = useState<{ valid: boolean; message: string } | null>(null);
 
+  // Server API key management state
+  const [keyInput, setKeyInput] = useState("");
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+  const [removingKey, setRemovingKey] = useState(false);
+  const [testingSavedKey, setTestingSavedKey] = useState(false);
+
   // Usage statistics from server
   const [usage, setUsage] = useState<{
     monthlySpendUSD: number;
@@ -116,6 +127,68 @@ export default function SettingsPage() {
       })
       .catch(() => {});
   }, []);
+
+  const handleSaveKey = async () => {
+    if (!keyInput.trim()) return;
+    setSavingKey(true);
+    try {
+      const res = await fetch("/api/v1/settings/key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: keyInput.trim(),
+          modelId: settings.defaultModel,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || "Failed to verify or save key");
+      }
+      toast.success(`Key verified & saved to server (.env.local, ending in ••••${data.data?.keyLast4 || '****'})`);
+      setKeyInput("");
+      engineStatus.refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save API key");
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  const handleRemoveKey = async () => {
+    setRemovingKey(true);
+    try {
+      const res = await fetch("/api/v1/settings/key", {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || "Failed to remove key");
+      }
+      toast.info("Gemini API key removed from server (.env.local)");
+      engineStatus.refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to remove key");
+    } finally {
+      setRemovingKey(false);
+    }
+  };
+
+  const handleTestSavedKey = async () => {
+    setTestingSavedKey(true);
+    try {
+      const res = await testKey(undefined);
+      if (res.valid) {
+        toast.success(res.message || "Saved key verified successfully!");
+        engineStatus.refresh();
+      } else {
+        toast.error(res.message || "Verification probe failed");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to test saved key");
+    } finally {
+      setTestingSavedKey(false);
+    }
+  };
 
   const handleTestKeyProbe = async () => {
     setTestingKey(true);
@@ -228,77 +301,97 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {/* Server Key Status Banner */}
-              <div className="p-4 rounded-xl bg-[var(--bg-tertiary)] flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <ShieldCheck size={18} className="text-[var(--text-primary)] mt-0.5 flex-shrink-0" />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-[var(--text-primary)]">
-                        Google Gemini Credential
-                      </span>
-                      <Badge
-                        variant={engineStatus.keyConfigured ? "low" : "medium"}
-                        size="sm"
-                      >
-                        {engineStatus.keyConfigured ? "Configured on Server" : "Simulation Mode Active"}
-                      </Badge>
+              {/* Gemini API Key Management Card */}
+              <div className="p-4 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck size={18} className="text-[var(--text-primary)] mt-0.5 flex-shrink-0" />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-[var(--text-primary)]">
+                          Google Gemini Credential
+                        </span>
+                        <Badge
+                          variant={engineStatus.keyConfigured ? "low" : "medium"}
+                          size="sm"
+                        >
+                          {engineStatus.keyConfigured
+                            ? `Live · key ending ••••${engineStatus.keyLast4 || "****"}`
+                            : "Simulation — no key"}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
+                        {engineStatus.keyConfigured
+                          ? `API key is verified and stored securely in server .env.local (${engineStatus.keySource || 'server'}). Personas run live against ${engineStatus.model}.`
+                          : "No server GEMINI_API_KEY detected. The chamber runs with zero-cost MockProvider archetypes."}
+                      </p>
                     </div>
-                    <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
-                      {engineStatus.keyConfigured
-                        ? "API key is loaded strictly in server-side Node.js environment (.env.local). It is never sent to the browser bundle."
-                        : "No server GEMINI_API_KEY detected. The chamber runs with deterministic, zero-cost MockProvider archetypes."}
-                    </p>
                   </div>
                 </div>
 
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleTestKeyProbe}
-                  isLoading={testingKey}
-                >
-                  Verify Health
-                </Button>
-              </div>
+                {/* Key Input Field with Show/Hide Toggle */}
+                <div className="space-y-2 pt-1 border-t border-[var(--border-subtle)]">
+                  <div className="relative">
+                    <Input
+                      label="Save / Update Server Gemini Key"
+                      type={showKeyInput ? "text" : "password"}
+                      placeholder="Paste AIzaSy... to verify and save to server (.env.local)"
+                      value={keyInput}
+                      onChange={(e) => setKeyInput(e.target.value)}
+                      rightElement={
+                        <button
+                          type="button"
+                          onClick={() => setShowKeyInput(!showKeyInput)}
+                          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                          aria-label={showKeyInput ? "Hide API key" : "Show API key"}
+                        >
+                          {showKeyInput ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      }
+                    />
+                  </div>
 
-              {/* Ephemeral Key Verification Probe */}
-              <div className="space-y-2 pt-2">
-                <Input
-                  label="Test Alternate Key (Server Verification Only)"
-                  type="password"
-                  placeholder="Paste AIzaSy... to test connectivity without saving to browser"
-                  value={testProbeKey}
-                  onChange={(e) => setTestProbeKey(e.target.value)}
-                  rightElement={
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    Keys are validated server-side and persisted strictly to <code className="text-[10px] bg-[var(--bg-secondary)] px-1 py-0.5 rounded">.env.local</code>. Never stored in browser localStorage.
+                  </p>
+
+                  {/* Key Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     <Button
                       size="sm"
-                      variant="ghost"
-                      onClick={handleTestKeyProbe}
-                      isLoading={testingKey}
-                      disabled={!testProbeKey.trim()}
+                      variant="primary"
+                      onClick={handleSaveKey}
+                      isLoading={savingKey}
+                      disabled={!keyInput.trim()}
                     >
-                      Test
+                      Save & Verify
                     </Button>
-                  }
-                />
-                <p className="text-[11px] text-[var(--text-muted)]">
-                  Keys are validated against the server-side health probe and never persisted to browser localStorage.
-                </p>
 
-                {testResult && (
-                  <div
-                    className={cn(
-                      "p-3 rounded-xl text-xs flex items-center gap-2.5 mt-2",
-                      testResult.valid
-                        ? "bg-[var(--status-low)]/10 text-[var(--status-low)]"
-                        : "bg-[var(--status-urgent)]/10 text-[var(--status-urgent)]"
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleTestSavedKey}
+                      isLoading={testingSavedKey}
+                      disabled={!engineStatus.keyConfigured}
+                      className="whitespace-nowrap min-w-[110px]"
+                    >
+                      Verify Health
+                    </Button>
+
+                    {engineStatus.keyConfigured && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleRemoveKey}
+                        isLoading={removingKey}
+                        className="text-[var(--status-urgent)] hover:bg-[var(--status-urgent)]/10 ml-auto"
+                      >
+                        <Trash2 size={13} className="mr-1" />
+                        Remove Key
+                      </Button>
                     )}
-                  >
-                    {testResult.valid ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-                    <span>{testResult.message}</span>
                   </div>
-                )}
+                </div>
               </div>
 
               {/* Model Select */}
@@ -308,12 +401,12 @@ export default function SettingsPage() {
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {[
-                    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", desc: "Fast, multi-turn synthesis (Recommended)" },
-                    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", desc: "Deep dialectic reasoning & complex policy" },
-                    { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", desc: "Lightweight fallback tier" },
-                    { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", desc: "Legacy long-context model" },
+                    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview", desc: "Fastest frontier synthesis (1.5s latency, recommended)" },
+                    { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", desc: "High-throughput frontier reasoning tier" },
+                    { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", desc: "Next-generation dialectic reasoning" },
+                    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", desc: "Deep analytical reasoning & complex policy" },
                   ].map((m) => {
-                    const isSelected = settings.defaultModel === m.id;
+                    const isSelected = settings.defaultModel === m.id || (!settings.defaultModel && m.id === "gemini-3-flash-preview");
                     return (
                       <button
                         key={m.id}

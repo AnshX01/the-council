@@ -19,6 +19,8 @@ export interface StoredSession {
   verdict_type: string | null;
   verdict_payload: Record<string, any> | null;
   model_used: string;
+  engine_mode: 'live' | 'simulation';
+  provider_id: string;
   call_count: number;
   prompt_tokens: number;
   candidate_tokens: number;
@@ -78,19 +80,23 @@ export class SessionRepository {
     status?: StoredSession['status'];
     current_phase?: string;
     model_used?: string;
+    engine_mode?: 'live' | 'simulation';
+    provider_id?: string;
     tags?: string[];
   }): StoredSession {
     const now = Date.now();
     const status = data.status || 'QUEUED';
     const current_phase = data.current_phase || 'PHASE_0_FRAMING';
     const model_used = data.model_used || 'gemini-2.5-flash';
+    const engine_mode = data.engine_mode || 'simulation';
+    const provider_id = data.provider_id || 'gemini';
     const tags = data.tags || [];
 
     const stmt = this.db.prepare(`
       INSERT INTO sessions (
         id, title, query, options, status, current_phase, model_used,
-        tags, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        engine_mode, provider_id, tags, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -101,6 +107,8 @@ export class SessionRepository {
       status,
       current_phase,
       model_used,
+      engine_mode,
+      provider_id,
       JSON.stringify(tags),
       now
     );
@@ -143,6 +151,9 @@ export class SessionRepository {
       lease_expires_at: number | null;
       started_at: number | null;
       finished_at: number | null;
+      model_used: string;
+      engine_mode: 'live' | 'simulation';
+      provider_id: string;
     }>
   ): StoredSession | null {
     const fields: string[] = [];
@@ -310,6 +321,8 @@ export class SessionRepository {
           ? JSON.parse(row.verdict_payload)
           : row.verdict_payload || null,
       model_used: row.model_used,
+      engine_mode: (row.engine_mode as 'live' | 'simulation') || 'simulation',
+      provider_id: row.provider_id || 'gemini',
       call_count: row.call_count,
       prompt_tokens: row.prompt_tokens,
       candidate_tokens: row.candidate_tokens,
