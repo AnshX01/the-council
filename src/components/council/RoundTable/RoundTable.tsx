@@ -31,6 +31,7 @@ import { InteractionArc, InteractionStance } from "./InteractionArc";
 import { VerdictSeal } from "./VerdictSeal";
 import { PersonaDrawer } from "./PersonaDrawer";
 import { ReplayScrubber } from "./ReplayScrubber";
+import { PersonaGlyph } from "@/components/council/PersonaGlyph";
 import { PersonaId } from "@/types/persona";
 import {
   DeliberationPhase,
@@ -64,6 +65,7 @@ export interface RoundTableProps {
   roundNumber?: number;
   maxRounds?: number;
   convergenceScore?: number;
+  phaseProgress?: number;
   isUnanimous?: boolean;
   status?: "idle" | "running" | "completed" | "failed" | "aborted";
   lastSpeakerSnippet?: string;
@@ -103,6 +105,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
   roundNumber = 1,
   maxRounds = 3,
   convergenceScore = 0,
+  phaseProgress = 0,
   isUnanimous = false,
   status = "idle",
   lastSpeakerSnippet,
@@ -206,7 +209,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
     }
   };
 
-  const speakingSeat = layout.seats.find((s) => s.id === currentSpeakerId);
+  const speakingSeat = status === "running" ? layout.seats.find((s) => s.id === currentSpeakerId) : undefined;
 
   return (
     <div
@@ -433,6 +436,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
               roundNumber={roundNumber}
               maxRounds={maxRounds}
               convergenceScore={convergenceScore}
+              phaseProgress={phaseProgress}
               isUnanimous={isUnanimous}
               status={status}
               ratificationVotes={
@@ -456,7 +460,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
             };
 
             const state = seatStates[seat.id as PersonaId];
-            const isSpeaking = currentSpeakerId === seat.id;
+            const isSpeaking = status === "running" && Boolean(currentSpeakerId && currentSpeakerId === seat.id);
             const vote = ratificationVotes[seat.id as PersonaId];
 
             return (
@@ -610,12 +614,12 @@ export const RoundTable: React.FC<RoundTableProps> = ({
                   style={{ borderColor: seat.color || "#3B82F6" }}
                   title={`${persona.name}: ${nodeData?.totalSpoken || 0} spoken, ${nodeData?.challengesInitiated || 0} challenges`}
                 >
-                  <span
-                    className="text-xs font-bold"
+                  <PersonaGlyph
+                    persona={persona}
+                    personaId={seat.id}
+                    size={seat.isModerator ? 18 : 22}
                     style={{ color: seat.color || "#3B82F6" }}
-                  >
-                    {seat.isModerator ? "M" : seat.name.charAt(0)}
-                  </span>
+                  />
                   {!seat.isModerator && (
                     <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-[var(--accent)] text-[var(--bg-primary)] rounded-full text-[9px] font-mono font-bold">
                       {nodeData?.totalSpoken || 0}
@@ -737,7 +741,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
           {layout.seats.map((seat) => {
             const persona = findPersonaById(seat.id as PersonaId);
             const state = seatStates[seat.id as PersonaId];
-            const isSpeaking = currentSpeakerId === seat.id;
+            const isSpeaking = status === "running" && Boolean(currentSpeakerId && currentSpeakerId === seat.id);
 
             return (
               <div
@@ -755,13 +759,13 @@ export const RoundTable: React.FC<RoundTableProps> = ({
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
                     style={{
                       backgroundColor: `${seat.color || "#3B82F6"}20`,
                       color: seat.color || "#3B82F6",
                     }}
                   >
-                    {seat.isModerator ? "M" : seat.name.charAt(0)}
+                    <PersonaGlyph persona={persona} personaId={seat.id} size={16} />
                   </div>
                   <div>
                     <h4 className="text-xs font-semibold text-[var(--text-primary)]">
@@ -798,13 +802,13 @@ export const RoundTable: React.FC<RoundTableProps> = ({
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold text-xs"
+              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
               style={{
                 backgroundColor: `${speakingSeat.color || "#3B82F6"}20`,
                 color: speakingSeat.color || "#3B82F6",
               }}
             >
-              {speakingSeat.isModerator ? "M" : speakingSeat.name.charAt(0)}
+              <PersonaGlyph personaId={speakingSeat.id} size={16} />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-0.5">

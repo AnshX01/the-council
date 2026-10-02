@@ -17,6 +17,7 @@ export interface VerdictSealProps {
   roundNumber?: number;
   maxRounds?: number;
   convergenceScore?: number;
+  phaseProgress?: number;
   isUnanimous?: boolean;
   status: "idle" | "running" | "completed" | "failed" | "aborted";
   ratificationVotes?: Record<string, 'sign_off' | 'amendment' | 'dissent'>;
@@ -29,6 +30,7 @@ export const VerdictSeal: React.FC<VerdictSealProps> = ({
   roundNumber = 1,
   maxRounds = 3,
   convergenceScore = 0,
+  phaseProgress = 0,
   isUnanimous = false,
   status,
   ratificationVotes = {},
@@ -41,8 +43,44 @@ export const VerdictSeal: React.FC<VerdictSealProps> = ({
   const ringRadius = 46;
   const strokeWidth = 4;
   const circumference = 2 * Math.PI * ringRadius;
-  const validScore = Math.min(100, Math.max(0, convergenceScore));
+
+  const displayProgress = phase === "PHASE_0_FRAMING"
+    ? 100
+    : phase === "PHASE_1_OPENING"
+    ? (phaseProgress || 0)
+    : phase === "PHASE_2_CROSS_EXAM"
+    ? (convergenceScore || phaseProgress || 0)
+    : phase === "PHASE_3_CONVERGENCE_CHECK"
+    ? (convergenceScore || 85)
+    : phase === "PHASE_4_RATIFICATION"
+    ? (phaseProgress || convergenceScore || 0)
+    : 100;
+
+  const validScore = Math.min(100, Math.max(0, displayProgress));
   const strokeDashoffset = circumference - (circumference * validScore) / 100;
+
+  const votesList = Object.values(ratificationVotes);
+  const dissentsFromVotes = votesList.filter(
+    (v) => v === "dissent" || (v as any)?.vote === "OBJECT"
+  ).length;
+  const ratifiedFromVotes = votesList.filter(
+    (v) =>
+      v === "sign_off" ||
+      v === "amendment" ||
+      (v as any)?.vote === "SIGN_OFF" ||
+      (v as any)?.vote === "SIGN_OFF_WITH_AMENDMENT"
+  ).length;
+
+  const is5050Split = !isUnanimous && dissentsFromVotes === 4 && ratifiedFromVotes === 4;
+  const isMajority = !isUnanimous && !is5050Split && ratifiedFromVotes >= 5;
+
+  const verdictLabel = isUnanimous
+    ? "Unanimous"
+    : is5050Split
+    ? "50-50 Split"
+    : isMajority
+    ? "Majority"
+    : "Dissent";
 
   return (
     <div
@@ -91,13 +129,19 @@ export const VerdictSeal: React.FC<VerdictSealProps> = ({
             />
           </>
         ) : (
-          /* Clean Unified Verdict Ring (Solid Emerald for Unanimous, Neutral Accent for Dissent) */
+          /* Clean Unified Verdict Ring */
           <g>
             <circle
               cx={size / 2}
               cy={size / 2}
               r={ringRadius}
-              stroke={isUnanimous ? "var(--status-low)" : "var(--accent)"}
+              stroke={
+                isUnanimous
+                  ? "var(--status-low)"
+                  : is5050Split
+                  ? "var(--status-medium)"
+                  : "var(--accent)"
+              }
               strokeWidth={strokeWidth}
               fill="none"
               opacity={0.9}
@@ -106,7 +150,13 @@ export const VerdictSeal: React.FC<VerdictSealProps> = ({
               cx={size / 2}
               cy={size / 2}
               r={ringRadius + 3}
-              stroke={isUnanimous ? "var(--status-low)" : "var(--border-subtle)"}
+              stroke={
+                isUnanimous
+                  ? "var(--status-low)"
+                  : is5050Split
+                  ? "var(--status-medium)"
+                  : "var(--border-subtle)"
+              }
               strokeWidth={1}
               fill="none"
               opacity={isUnanimous ? 0.35 : 0.2}
@@ -127,13 +177,23 @@ export const VerdictSeal: React.FC<VerdictSealProps> = ({
             <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
               {currentPhaseDef.shortLabel}
             </span>
+            {phase === "PHASE_1_OPENING" && (
+              <span className="font-mono text-[9px] text-[var(--text-muted)]">
+                Statements
+              </span>
+            )}
             {phase === "PHASE_2_CROSS_EXAM" && (
               <span className="font-mono text-xs font-medium text-[var(--text-primary)] mt-0.5">
                 Round {roundNumber}/{maxRounds}
               </span>
             )}
+            {phase === "PHASE_4_RATIFICATION" && (
+              <span className="font-mono text-[9px] text-[var(--text-muted)]">
+                Voting
+              </span>
+            )}
             <span className="font-mono text-base font-bold text-[var(--text-primary)] mt-0.5">
-              {convergenceScore}%
+              {displayProgress}%
             </span>
           </>
         ) : (
@@ -143,13 +203,19 @@ export const VerdictSeal: React.FC<VerdictSealProps> = ({
                 "w-6 h-6 rounded-full flex items-center justify-center mb-0.5",
                 isUnanimous
                   ? "bg-[var(--status-low)]/15 text-[var(--status-low)]"
+                  : is5050Split
+                  ? "bg-[var(--status-medium)]/15 text-[var(--status-medium)]"
                   : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
               )}
             >
-              {isUnanimous ? <Check size={14} strokeWidth={2.5} /> : <Scale size={14} strokeWidth={2} />}
+              {isUnanimous ? (
+                <Check size={14} strokeWidth={2.5} />
+              ) : (
+                <Scale size={14} strokeWidth={2} />
+              )}
             </div>
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-primary)]">
-              {isUnanimous ? "Unanimous" : "Dissent"}
+              {verdictLabel}
             </span>
             <button
               type="button"

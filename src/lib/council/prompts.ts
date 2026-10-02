@@ -544,18 +544,38 @@ export function buildFinalSynthesisPrompt(
     .filter(([_, v]) => v.vote === 'SIGN_OFF_WITH_AMENDMENT' && v.amendmentText)
     .map(([id, v]) => `[${id}]: "${v.amendmentText}"`);
 
-  const unanimityBlock = isUnanimous
-    ? `STATUS: UNANIMOUS VERDICT REACHED — ALL ACTIVE MEMBERS RATIFIED.
+  const totalVotes = Object.keys(votes).length;
+  const objectionsCount = objections.length;
+  const ratifiedCount = totalVotes - objectionsCount;
+
+  let unanimityBlock: string;
+  let conclusionInstruction: string;
+
+  if (isUnanimous || (ratifiedCount === totalVotes && objectionsCount === 0)) {
+    unanimityBlock = `STATUS: UNANIMOUS VERDICT REACHED — ALL ACTIVE MEMBERS RATIFIED.
 ⚠️  ZERO members voted OBJECT. DO NOT fabricate or mention any minority dissent.
     If any member requested amendments, incorporate them as caveats — they are NOT objections.
-${amendments.length > 0 ? `\nMEMBER AMENDMENTS TO INCORPORATE AS CAVEATS:\n${amendments.map((a) => '  - ' + a).join('\n')}` : ''}`
-    : `STATUS: CONSENSUS NOT FULLY REACHED
+${amendments.length > 0 ? `\nMEMBER AMENDMENTS TO INCORPORATE AS CAVEATS:\n${amendments.map((a) => '  - ' + a).join('\n')}` : ''}`;
+    conclusionInstruction = `2. unanimousConclusion: A concise 2-3 sentence paragraph explaining the council's unanimous reasoning for the named verdict. ALL members agreed. DO NOT mention dissent, minority positions, or any member who objected — because none did.`;
+  } else if (ratifiedCount === objectionsCount) {
+    unanimityBlock = `STATUS: DIVIDED COUNCIL (50-50 EQUAL SPLIT) — NO MAJORITY CONSENSUS.
+The 8 voting members are equally split: exactly ${ratifiedCount} members ratified the draft, and exactly ${objectionsCount} members formally dissented.
+⚠️ CRITICAL FACTUAL ACCURACY INSTRUCTION:
+There is NO majority and NO minority. DO NOT claim or write that a "majority" reached a decision, concluded, or agreed.
 DISSENTING OBJECTIONS:
-${objections.length > 0 ? objections.map((o) => '  - ' + o).join('\n') : '  none'}`;
-
-  const conclusionInstruction = isUnanimous
-    ? `2. unanimousConclusion: A concise 2-3 sentence paragraph explaining the council's unanimous reasoning for the named verdict. ALL members agreed. DO NOT mention dissent, minority positions, or any member who objected — because none did.`
-    : `2. unanimousConclusion: A concise 2-3 sentence paragraph explaining the council's reasoning. Because this was NOT unanimous, name both the majority verdict AND the concrete minority dissent position (name it specifically, do not be vague).`;
+${objections.map((o) => '  - ' + o).join('\n')}`;
+    conclusionInstruction = `2. unanimousConclusion: A concise 2-3 sentence paragraph explaining the Council's impasse. Because the council is evenly split 50-50 (4 against 4), state clearly that the Council is divided without a majority. Give equal weight to both perspectives: explain the core rationale of the 4 ratifying members and the fundamental objection of the 4 dissenting members without declaring either side a "majority".`;
+  } else if (ratifiedCount > objectionsCount) {
+    unanimityBlock = `STATUS: MAJORITY VERDICT REACHED (${ratifiedCount} of ${totalVotes} members ratified, ${objectionsCount} objected).
+DISSENTING OBJECTIONS:
+${objections.map((o) => '  - ' + o).join('\n')}`;
+    conclusionInstruction = `2. unanimousConclusion: A concise 2-3 sentence paragraph explaining the council's reasoning. A clear majority of ${ratifiedCount} of ${totalVotes} members ratified the verdict. Detail the majority verdict AND state the specific objections of the dissenting minority members.`;
+  } else {
+    unanimityBlock = `STATUS: CONSENSUS FAILED — PROPOSAL REJECTED BY MAJORITY DISSENT (${objectionsCount} of ${totalVotes} members objected).
+A majority of the council dissents and rejects the proposed draft:
+${objections.map((o) => '  - ' + o).join('\n')}`;
+    conclusionInstruction = `2. unanimousConclusion: A concise 2-3 sentence paragraph explaining why the resolution failed to achieve support. A majority of ${objectionsCount} members rejected the draft. Explain the primary objections that caused the resolution to fail.`;
+  }
 
   return `You are the Moderator of The Council.
 Synthesize the final resolution of the council.

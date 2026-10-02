@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { COUNCIL_MEMBERS, PersonaProfile } from "@/lib/council/personas";
 import { PersonaDrawer } from "@/components/council/RoundTable/PersonaDrawer";
+import { PersonaGlyph } from "@/components/council/PersonaGlyph";
 import { useEngineStatus, useSettings } from "@/lib/ui/hooks";
 import { toast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
@@ -349,13 +350,13 @@ export default function HomePage() {
               className="p-2.5 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] flex items-center gap-2.5 transition-colors text-left"
             >
               <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs flex-shrink-0"
+                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                 style={{
                   backgroundColor: `${p.colorHex}20`,
                   color: p.colorHex,
                 }}
               >
-                {p.name.charAt(0)}
+                <PersonaGlyph persona={p} personaId={p.id} size={15} />
               </div>
               <div className="min-w-0">
                 <h4 className="text-xs font-semibold text-[var(--text-primary)] truncate">

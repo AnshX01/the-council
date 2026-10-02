@@ -575,6 +575,7 @@ export interface PhaseState {
   isCompleted: boolean;
   isFailed: boolean;
   convergenceScore: number;
+  phaseProgress: number;
   phaseDurations?: Record<string, number>;
 }
 
@@ -588,6 +589,8 @@ export function selectPhaseState(events: CouncilSSEEvent[] = []): PhaseState {
   const phaseDurations: Record<string, number> = {};
   let phaseStartTime = 0;
   let activePhase: string = 'PHASE_0_FRAMING';
+  const openingPersonas = new Set<string>();
+  const ratificationPersonas = new Set<string>();
 
   for (const ev of events) {
     const evTime = ev.timestamp ? new Date(ev.timestamp).getTime() : Date.now();
@@ -612,10 +615,23 @@ export function selectPhaseState(events: CouncilSSEEvent[] = []): PhaseState {
       if (typeof p.roundNumber === 'number') {
         roundNumber = p.roundNumber;
       }
+      if (currentPhase === 'PHASE_1_OPENING' && p.personaId) {
+        openingPersonas.add(p.personaId);
+      }
+    } else if (ev.event === 'position_update') {
+      const p = ev.payload;
+      if (p.personaId) {
+        openingPersonas.add(p.personaId);
+      }
     } else if (ev.event === 'moderator_draft') {
       const p = ev.payload;
       if (typeof p.alignmentScore === 'number') {
         convergenceScore = p.alignmentScore;
+      }
+    } else if (ev.event === 'ratification_vote') {
+      const p = ev.payload;
+      if (p.personaId) {
+        ratificationPersonas.add(p.personaId);
       }
     } else if (ev.event === 'final_verdict') {
       isCompleted = true;
@@ -628,6 +644,22 @@ export function selectPhaseState(events: CouncilSSEEvent[] = []): PhaseState {
   const phaseIndex = PHASES.findIndex((p) => p.id === currentPhase);
   const validIndex = phaseIndex >= 0 ? phaseIndex : 0;
 
+  // Compute live progress within current phase (0 - 100)
+  let phaseProgress = 0;
+  if (currentPhase === 'PHASE_0_FRAMING') {
+    phaseProgress = events.length > 0 ? 100 : 25;
+  } else if (currentPhase === 'PHASE_1_OPENING') {
+    phaseProgress = Math.min(100, Math.round((openingPersonas.size / 8) * 100));
+  } else if (currentPhase === 'PHASE_2_CROSS_EXAM') {
+    phaseProgress = convergenceScore > 0 ? convergenceScore : Math.min(100, Math.round((roundNumber / maxRounds) * 100));
+  } else if (currentPhase === 'PHASE_3_CONVERGENCE_CHECK') {
+    phaseProgress = convergenceScore > 0 ? convergenceScore : 85;
+  } else if (currentPhase === 'PHASE_4_RATIFICATION') {
+    phaseProgress = Math.min(100, Math.round((ratificationPersonas.size / 8) * 100));
+  } else if (currentPhase === 'PHASE_5_FINAL_OUTPUT') {
+    phaseProgress = 100;
+  }
+
   return {
     currentPhase,
     phaseIndex: validIndex,
@@ -637,6 +669,7 @@ export function selectPhaseState(events: CouncilSSEEvent[] = []): PhaseState {
     isCompleted,
     isFailed,
     convergenceScore,
+    phaseProgress,
     phaseDurations,
   };
 }

@@ -98,17 +98,33 @@ export function generateFallbackFinalSynthesis(
   mainCaveats: string[];
   actionableGuidance: string[];
 } {
+  const totalVotes = Object.keys(votes).length;
   const objections = Object.entries(votes)
     .filter(([_, v]) => v.vote === 'OBJECT')
     .map(([id, v]) => `${id}: ${v.objectionReason || 'Substantive objection'}`);
+  const objectionsCount = objections.length;
+  const ratifiedCount = totalVotes - objectionsCount;
+
+  let verdictOneLiner: string;
+  let unanimousConclusion: string;
+
+  if (isUnanimous || (ratifiedCount === totalVotes && objectionsCount === 0)) {
+    verdictOneLiner = `The Council unanimously concludes: proceed with the consensus resolution.`;
+    unanimousConclusion = `The Council has reached a unanimous conclusion: ${finalDraft}`;
+  } else if (ratifiedCount === objectionsCount) {
+    verdictOneLiner = `Divided Council (50-50 Split) — No majority reached on the resolution.`;
+    unanimousConclusion = `The Council is deadlocked in an equal 50-50 split (4 in favor, 4 dissenting). No majority verdict was reached. Stances: ${finalDraft}. Persistent objections: ${objections.join('; ')}`;
+  } else if (ratifiedCount > objectionsCount) {
+    verdictOneLiner = `Majority Verdict Reached (${ratifiedCount}/${totalVotes}) — resolution approved with minority reservations.`;
+    unanimousConclusion = `The Council reached a majority verdict with ${ratifiedCount} members in favor and ${objectionsCount} dissenting. Majority position: ${finalDraft}. Persistent objections noted: ${objections.join('; ')}`;
+  } else {
+    verdictOneLiner = `Resolution Rejected — Majority of the Council dissents (${objectionsCount}/${totalVotes}).`;
+    unanimousConclusion = `The Council rejected the proposed resolution by majority dissent. Leading objections: ${objections.join('; ')}`;
+  }
 
   return {
-    verdictOneLiner: isUnanimous
-      ? `The Council unanimously concludes: proceed with the majority position.`
-      : `Consensus not reached — majority favors proceeding with noted objections.`,
-    unanimousConclusion: isUnanimous
-      ? `The Council has reached a unanimous conclusion: ${finalDraft}`
-      : `The Council concluded with consensus not fully reached. Primary majority position: ${finalDraft}. Persistent objections noted: ${objections.join('; ')}`,
+    verdictOneLiner,
+    unanimousConclusion,
     consensusReached: isUnanimous,
     keyReasons: [
       'Multi-perspective scrutiny balanced optimism with rigorous empirical verification',

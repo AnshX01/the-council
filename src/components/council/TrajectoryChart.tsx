@@ -11,6 +11,7 @@ import { COUNCIL_MEMBERS, PersonaProfile, findPersonaById } from "@/lib/council/
 import { DeliberationSession } from "@/types/session";
 import { CouncilSSEEvent } from "@/types/events";
 import { selectConfidenceTrajectories, PersonaTrajectory } from "@/lib/ui/selectors";
+import { PersonaGlyph } from "@/components/council/PersonaGlyph";
 import { Check, Edit3, X, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -74,13 +75,13 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
                   className="flex items-center gap-2.5 cursor-pointer min-w-0"
                 >
                   <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                     style={{
                       backgroundColor: `${member.colorHex}20`,
                       color: member.colorHex,
                     }}
                   >
-                    {member.name.charAt(0)}
+                    <PersonaGlyph persona={member} personaId={member.id} size={15} />
                   </div>
                   <div className="min-w-0">
                     <h4 className="text-xs font-semibold text-[var(--text-primary)] truncate">

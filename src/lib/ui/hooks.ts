@@ -293,10 +293,45 @@ export function useSessionStream(sessionId: string | null | undefined) {
 
           setEvents((prev) => [...prev, sseEvent]);
 
+          // Live session state mutations based on event type
+          if (sseEvent.event === 'phase_started') {
+            const phase = (sseEvent.payload as any)?.phase;
+            if (phase) {
+              setSession((prev) => (prev ? { ...prev, currentPhase: phase } : prev));
+            }
+          } else if (sseEvent.event === 'moderator_draft') {
+            const draft = sseEvent.payload as any;
+            if (draft) {
+              setSession((prev) => {
+                if (!prev) return prev;
+                const existing = prev.convergenceDrafts || [];
+                return { ...prev, convergenceDrafts: [...existing, draft] };
+              });
+            }
+          } else if (sseEvent.event === 'cross_exam_round_complete') {
+            const r = (sseEvent.payload as any)?.roundNumber;
+            if (typeof r === 'number') {
+              setSession((prev) => (prev ? { ...prev, currentCrossExamRound: r } : prev));
+            }
+          }
+
           // Handle terminal events
           if (sseEvent.event === 'final_verdict' || sseEvent.event === 'done') {
             isFinishedRef.current = true;
             setConnectionState('finished');
+            if (sseEvent.event === 'final_verdict') {
+              const verdict = sseEvent.payload as any;
+              setSession((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: 'completed' as any,
+                      currentPhase: 'PHASE_5_FINAL_OUTPUT',
+                      finalVerdict: verdict,
+                    }
+                  : prev
+              );
+            }
             loadInitialSnapshot();
           } else if (sseEvent.event === 'session_error') {
             setConnectionState('lost');

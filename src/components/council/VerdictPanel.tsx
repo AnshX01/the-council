@@ -16,6 +16,7 @@ import { Check, Scale, Copy, FileText, ChevronDown, ChevronUp } from "lucide-rea
 import { FinalVerdict, DeliberationSession, SurvivingObjection } from "@/types/session";
 import { PersonaId } from "@/types/persona";
 import { findPersonaById } from "@/lib/council/personas";
+import { PersonaGlyph } from "@/components/council/PersonaGlyph";
 import { Button } from "@/components/ui/Button";
 import { toast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
@@ -38,12 +39,6 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ session, className =
   }
 
   const vAny = verdict as any;
-  const isUnanimous: boolean = Boolean(
-    verdict.isUnanimous ||
-    vAny.verdictType === "UNANIMOUS" ||
-    verdict.status === "UNANIMOUS_CONSENSUS"
-  );
-
   const dissenters: SurvivingObjection[] =
     verdict.survivingObjections || vAny.dissenters || [];
 
@@ -60,7 +55,36 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ session, className =
     verdict.criticalCaveatsAndRisks || vAny.caveats || [];
 
   const rounds = session.crossExamRounds?.length || 3;
-  const ratifiedCount = 8 - dissenters.length;
+  const ratifiedCount = verdict.ratifiedBy ? verdict.ratifiedBy.length : (8 - dissenters.length);
+  const dissentCount = dissenters.length;
+
+  const isUnanimous: boolean = Boolean(
+    verdict.isUnanimous ||
+    vAny.verdictType === "UNANIMOUS" ||
+    verdict.status === "UNANIMOUS_CONSENSUS" ||
+    (ratifiedCount === 8 && dissentCount === 0)
+  );
+
+  const isSplitDecision = !isUnanimous && ratifiedCount === 4 && dissentCount === 4;
+  const isMajority = !isUnanimous && !isSplitDecision && ratifiedCount >= 5;
+  const isRejected = !isUnanimous && ratifiedCount < 4;
+
+  const badgeLabel = isUnanimous
+    ? "Unanimous Consensus Reached"
+    : isSplitDecision
+    ? "Divided Council (50-50 Split)"
+    : isMajority
+    ? "Majority Verdict Reached"
+    : "Consensus Failed (Majority Dissent)";
+
+  const badgeColorClasses = isUnanimous
+    ? "bg-[var(--status-low)]/10 text-[var(--status-low)]"
+    : isSplitDecision
+    ? "bg-[var(--status-medium)]/10 text-[var(--status-medium)] border border-[var(--status-medium)]/20"
+    : isMajority
+    ? "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border border-[var(--border-subtle)]"
+    : "bg-[var(--status-urgent)]/10 text-[var(--status-urgent)] border border-[var(--status-urgent)]/20";
+
   const sessionId = (session as any).id || session.sessionId;
 
   const toggleReason = (pid: string) => {
@@ -69,7 +93,7 @@ export const VerdictPanel: React.FC<VerdictPanelProps> = ({ session, className =
 
   const handleCopySummary = () => {
     const summary = `THE COUNCIL RESOLUTION
-Status: ${isUnanimous ? "Unanimous Consensus Reached" : "Consensus Not Fully Reached"}
+Status: ${badgeLabel}
 Conclusion: ${headline}
 
 Actionable Guidance:
@@ -99,9 +123,7 @@ ${caveats.map((c) => `- ${c}`).join("\n")}
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium",
-                isUnanimous
-                  ? "bg-[var(--status-low)]/10 text-[var(--status-low)]"
-                  : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border border-[var(--border-subtle)]"
+                badgeColorClasses
               )}
             >
               {isUnanimous ? (
@@ -109,7 +131,7 @@ ${caveats.map((c) => `- ${c}`).join("\n")}
               ) : (
                 <Scale size={12} strokeWidth={2} />
               )}
-              <span>{isUnanimous ? "Unanimous Consensus Reached" : "Consensus Not Fully Reached"}</span>
+              <span>{badgeLabel}</span>
             </span>
           </div>
 
@@ -233,13 +255,13 @@ ${caveats.map((c) => `- ${c}`).join("\n")}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
                       <div
-                        className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold"
+                        className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
                         style={{
                           backgroundColor: `${color}20`,
                           color,
                         }}
                       >
-                        {persona?.name ? persona.name.charAt(0) : "M"}
+                        <PersonaGlyph persona={persona} personaId={pid} size={14} />
                       </div>
                       <span className="text-xs font-semibold text-[var(--text-primary)]">
                         {persona?.name || pid}

@@ -30,6 +30,7 @@ import { Tabs, TabItem } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useSessionStream } from "@/lib/ui/hooks";
+import { selectPhaseState } from "@/lib/ui/selectors";
 import { toast } from "@/components/ui/Toast";
 import { PersonaProfile } from "@/types/persona";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,27 @@ export default function ChamberPage({ params }: PageProps) {
     }
   }, [isFinished]);
 
+  // Derive live phase state from events
+  const phaseState = useMemo(() => selectPhaseState(events), [events]);
+  const effectivePhase = useMemo(() => {
+    if (isCompleted || isFinished) return "PHASE_5_FINAL_OUTPUT";
+    if (events.length > 0 && phaseState.currentPhase) return phaseState.currentPhase;
+    return session?.currentPhase || "PHASE_0_FRAMING";
+  }, [isCompleted, isFinished, events.length, phaseState.currentPhase, session?.currentPhase]);
+
+  const effectiveRoundNumber = useMemo(() => {
+    if (phaseState.roundNumber > 1) return phaseState.roundNumber;
+    return session?.crossExamRounds?.length || 1;
+  }, [phaseState.roundNumber, session?.crossExamRounds?.length]);
+
+  const effectiveConvergenceScore = useMemo(() => {
+    if (phaseState.convergenceScore > 0) return phaseState.convergenceScore;
+    if (session?.convergenceDrafts?.length) {
+      return session.convergenceDrafts[session.convergenceDrafts.length - 1].alignmentScore;
+    }
+    return sAny.convergenceScore || 0;
+  }, [phaseState.convergenceScore, session?.convergenceDrafts, sAny.convergenceScore]);
+
   // Derive current speaker & active interaction from events
   const latestMessage = useMemo(() => {
     for (let i = events.length - 1; i >= 0; i--) {
@@ -85,11 +107,12 @@ export default function ChamberPage({ params }: PageProps) {
     return null;
   }, [events]);
 
-  const currentSpeakerId = latestMessage?.personaId || null;
-  const lastSpeakerSnippet = latestMessage?.content || null;
+  // Speaker is strictly null if deliberation is finished or not running
+  const currentSpeakerId = isRunning && !isFinished ? (latestMessage?.personaId || null) : null;
+  const lastSpeakerSnippet = isRunning && !isFinished ? (latestMessage?.content || null) : null;
 
   const activeInteraction = useMemo(() => {
-    if (latestMessage?.targetPersonaId && latestMessage?.personaId) {
+    if (isRunning && !isFinished && latestMessage?.targetPersonaId && latestMessage?.personaId) {
       return {
         sourceId: latestMessage.personaId,
         targetId: latestMessage.targetPersonaId,
@@ -97,7 +120,7 @@ export default function ChamberPage({ params }: PageProps) {
       };
     }
     return null;
-  }, [latestMessage]);
+  }, [isRunning, isFinished, latestMessage]);
 
   const handleCopySummary = useCallback(() => {
     if (!session) return;
@@ -278,8 +301,8 @@ export default function ChamberPage({ params }: PageProps) {
 
       {/* Slim 6-Segment Phase Stepper */}
       <PhaseStepper
-        currentPhase={session?.currentPhase || "PHASE_0_FRAMING"}
-        phaseDurations={sAny.phaseDurations}
+        currentPhase={effectivePhase}
+        phaseDurations={phaseState.phaseDurations || sAny.phaseDurations}
       />
 
       {/* Main Dual-Column Deliberation Chamber (R1: Stack below xl, exactly 640px + 1fr at >=1280px) */}
@@ -292,13 +315,14 @@ export default function ChamberPage({ params }: PageProps) {
             openingPositions={session?.openingPositions}
             crossExamRounds={session?.crossExamRounds}
             ratificationVotes={sAny.ratificationVotes || (session?.ratificationCycles?.length ? session.ratificationCycles[session.ratificationCycles.length - 1].votes : undefined)}
-            phase={session?.currentPhase || "PHASE_0_FRAMING"}
-            roundNumber={session?.crossExamRounds?.length || 1}
+            phase={effectivePhase}
+            roundNumber={effectiveRoundNumber}
             maxRounds={session?.options?.maxCrossExamRounds || 3}
-            convergenceScore={sAny.convergenceScore || (session?.convergenceDrafts?.length ? session.convergenceDrafts[session.convergenceDrafts.length - 1].alignmentScore : 0)}
+            convergenceScore={effectiveConvergenceScore}
+            phaseProgress={phaseState.phaseProgress}
             isUnanimous={Boolean(session?.finalVerdict?.isUnanimous || sAny.finalVerdict?.verdictType === "UNANIMOUS" || session?.finalVerdict?.status === "UNANIMOUS_CONSENSUS")}
             status={isRunning ? "running" : isCompleted ? "completed" : "idle"}
-            lastSpeakerSnippet={lastSpeakerSnippet}
+            lastSpeakerSnippet={lastSpeakerSnippet || undefined}
             allEvents={events}
             onSelectPersona={(p) => setSelectedPersonaForDrawer(p)}
             onViewVerdict={() => setActiveTab("verdict")}
