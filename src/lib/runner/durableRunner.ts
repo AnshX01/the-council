@@ -241,12 +241,19 @@ export class DurableRunner {
 
       // Record final session metrics
       const finalEngineMode = provider.providerId === 'gemini' ? 'live' : 'simulation';
+      const promptTokens = updatedSession.totalCallsExecuted * 350;
+      const candidateTokens = updatedSession.totalCallsExecuted * 200;
+      const estimatedCostUSD = updatedSession.totalCallsExecuted * 550 * 0.00000015;
+
       this.sessionRepo.updateSession(sessionId, {
         status: 'COMPLETED',
         current_phase: updatedSession.currentPhase,
         verdict_type: verdict.status,
         verdict_payload: verdict as any,
         call_count: updatedSession.totalCallsExecuted,
+        prompt_tokens: promptTokens,
+        candidate_tokens: candidateTokens,
+        cost_estimate_usd: estimatedCostUSD,
         engine_mode: finalEngineMode,
         provider_id: provider.providerId,
         finished_at: Date.now(),
@@ -256,9 +263,9 @@ export class DurableRunner {
       this.usageRepo.recordUsage({
         sessionId,
         modelId: session.model_used,
-        promptTokens: updatedSession.totalCallsExecuted * 350,
-        candidateTokens: updatedSession.totalCallsExecuted * 200,
-        estimatedCostUSD: (updatedSession.totalCallsExecuted * 550 * 0.00000015),
+        promptTokens,
+        candidateTokens,
+        estimatedCostUSD,
       });
     } catch (err: any) {
       clearInterval(heartbeatTimer);

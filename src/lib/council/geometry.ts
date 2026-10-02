@@ -10,14 +10,14 @@
 export const TABLE_CONSTANTS = {
   DESIGN_SIZE: 640,
   CENTER: 320,
-  SEAT_RING_RADIUS: 232, // Rs
-  SEAT_TILE_RADIUS: 30,  // rt
-  MODERATOR_TILE_RADIUS: 38,
-  MODERATOR_RING_OFFSET: 8, // placed at Rs + 8 = 240
-  TABLE_RADIUS: 190,     // Rt = Rs - rt - 12 (232 - 30 - 12 = 190)
-  INNER_RING_FACTOR: 0.62, // 0.62 * Rt = 117.8
-  MEDALLION_RADIUS: 62,
-  LABEL_OFFSET: 14,      // Rs + rt + 14 = 276
+  SEAT_RING_RADIUS: 180, // Rs
+  SEAT_TILE_RADIUS: 26,  // rt
+  MODERATOR_TILE_RADIUS: 34,
+  MODERATOR_RING_OFFSET: 8, // placed at Rs + 8 = 188
+  TABLE_RADIUS: 144,     // Rt = 144 (gap = 180 - 26 - 144 = 10px; mod gap = 188 - 34 - 144 = 10px)
+  INNER_RING_FACTOR: 0.62, // 0.62 * Rt = 89.28
+  MEDALLION_RADIUS: 52,
+  LABEL_OFFSET: 14,      // Rs + rt + 14 = 220
 } as const;
 
 export interface SeatPersona {
@@ -67,18 +67,27 @@ export interface ArcOptions {
 export function computeSeatLayout(
   personas: SeatPersona[],
   tableSize = 600,
-  padding = 60
+  padding?: number
 ): TableLayout {
   const n = personas.length;
   if (n < 3 || n > 12) {
     throw new Error(`The Council requires between 3 and 12 personas, received ${n}`);
   }
 
+  const defaultPadding = tableSize === TABLE_CONSTANTS.DESIGN_SIZE
+    ? (TABLE_CONSTANTS.CENTER - TABLE_CONSTANTS.SEAT_RING_RADIUS)
+    : 60;
+  const effectivePadding = padding === 88 && tableSize === TABLE_CONSTANTS.DESIGN_SIZE
+    ? (TABLE_CONSTANTS.CENTER - TABLE_CONSTANTS.SEAT_RING_RADIUS)
+    : (padding !== undefined ? padding : defaultPadding);
+
   const centerX = tableSize / 2;
   const centerY = tableSize / 2;
-  const radius = (tableSize / 2) - padding;
-  // Dynamic seat radius based on count: more seats -> slightly smaller nodes
-  const seatRadius = Math.max(18, Math.min(32, Math.floor(tableSize / (n * 2.2))));
+  const radius = (tableSize / 2) - effectivePadding;
+  // Seat radius based on design constants or count scaling
+  const seatRadius = tableSize === TABLE_CONSTANTS.DESIGN_SIZE
+    ? TABLE_CONSTANTS.SEAT_TILE_RADIUS
+    : Math.max(18, Math.min(32, Math.floor(tableSize / (n * 2.2))));
 
   // Identify moderator (prefer id/role === 'moderator', fallback to index 0)
   let modIndex = personas.findIndex(

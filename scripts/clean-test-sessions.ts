@@ -24,7 +24,9 @@ const isExecute = process.argv.includes("--yes") || process.argv.includes("-y");
 const TEST_PATTERNS = [
   "%test%",
   "%Stream Unit Test%",
-  "%Rerun: Updated Al%",
+  "%Updated AI Local-First Dilemma%",
+  "%Rerun: Updated AI%",
+  "%strict local-first paradigm%",
   "%Over many years%",
   "%Should a bootstra%",
   "%Career vs. Family%",
@@ -38,7 +40,8 @@ try {
   const query = `
     SELECT id, title, query, created_at, status
     FROM sessions
-    WHERE ${TEST_PATTERNS.map(() => `(title LIKE ? OR query LIKE ?)`).join(" OR ")}
+    WHERE (${TEST_PATTERNS.map(() => `(title LIKE ? OR query LIKE ?)`).join(" OR ")})
+       OR id = 'sess_123'
     ORDER BY created_at DESC
   `;
 

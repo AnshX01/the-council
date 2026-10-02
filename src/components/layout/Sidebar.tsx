@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useEngineStatus, useSettings } from "@/lib/ui/hooks";
+import { useEngineStatus, useSettings, useUsage } from "@/lib/ui/hooks";
 import { toast } from "@/components/ui/Toast";
 
 interface RecentSession {
@@ -43,6 +43,7 @@ export function Sidebar() {
   const router = useRouter();
   const engineStatus = useEngineStatus();
   const { settings, updateSettings } = useSettings();
+  const { usage } = useUsage();
 
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
@@ -294,15 +295,33 @@ export function Sidebar() {
 
       {/* Bottom controls: Spend meter, Settings, Theme (R8: Generous bottom clearance) */}
       <div className="p-3 pb-8 border-t border-[var(--border-subtle)] flex flex-col gap-2">
-        <div className="px-1 text-[11px] text-[var(--text-muted)] flex items-center justify-between">
-          <span>Spend Cap</span>
-          <span className="font-mono text-[var(--text-secondary)]">
-            $0.00 / ${settings.monthlySpendCapUSD}
-          </span>
-        </div>
-        <div className="w-full h-1 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
-          <div className="h-full bg-[var(--accent)] rounded-full w-[2%]" />
-        </div>
+        {(() => {
+          const currentSpend = usage.monthlySpendUSD;
+          const spendCap = usage.monthlySpendCapUSD || settings.monthlySpendCapUSD || 10;
+          const formattedSpend =
+            currentSpend > 0 && currentSpend < 0.01
+              ? `$${currentSpend.toFixed(4)}`
+              : `$${currentSpend.toFixed(2)}`;
+          const spendPercent =
+            spendCap > 0 ? Math.min(100, Math.max(0, (currentSpend / spendCap) * 100)) : 0;
+
+          return (
+            <>
+              <div className="px-1 text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+                <span>Spend Cap</span>
+                <span className="font-mono text-[var(--text-secondary)]">
+                  {formattedSpend} / ${spendCap}
+                </span>
+              </div>
+              <div className="w-full h-1 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[var(--accent)] rounded-full transition-all duration-500"
+                  style={{ width: `${Math.max(spendPercent, currentSpend > 0 ? 3 : 0)}%` }}
+                />
+              </div>
+            </>
+          );
+        })()}
 
         <div className="flex items-center justify-between pt-1">
           <Link

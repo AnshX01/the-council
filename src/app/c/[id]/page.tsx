@@ -285,7 +285,7 @@ export default function ChamberPage({ params }: PageProps) {
       {/* Main Dual-Column Deliberation Chamber (R1: Stack below xl, exactly 640px + 1fr at >=1280px) */}
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,640px)_minmax(0,1fr)] gap-8 items-start">
         {/* Left Column: Sticky Round Table Stage (Isolated & Contained) */}
-        <div className="w-full max-w-[640px] xl:sticky xl:top-4 flex flex-col items-center isolate overflow-hidden z-0">
+        <div className="w-full max-w-[640px] xl:sticky xl:top-4 flex flex-col items-center isolate z-0">
           <RoundTable
             currentSpeakerId={currentSpeakerId}
             activeInteraction={activeInteraction}

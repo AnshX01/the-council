@@ -146,8 +146,14 @@ test.describe('The Council - Complete Deliberation E2E Suite', () => {
     await expect(page.locator("text=How Personas' Views Shifted")).toBeVisible();
 
     // Capture screenshot of deliberation verdict
+    const isMobile = (page.viewportSize()?.width || 0) < 600;
     await page.screenshot({
-      path: path.join(process.cwd(), 'test-results', 'screenshots', 'session-chamber-verdict.png'),
+      path: path.join(
+        process.cwd(),
+        'test-results',
+        'screenshots',
+        isMobile ? 'session-chamber-verdict-mobile.png' : 'session-chamber-verdict.png'
+      ),
       fullPage: true,
     });
 

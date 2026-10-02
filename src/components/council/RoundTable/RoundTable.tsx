@@ -120,9 +120,9 @@ export const RoundTable: React.FC<RoundTableProps> = ({
   const [arcTrail, setArcTrail] = useState<ArcTrailEntry[]>([]);
   const stageRef = useRef<HTMLDivElement>(null);
 
-  // Compute layout using R2 & RT4 design space constants (640x640, Rs=232, Rt=190)
+  // Compute layout using R2 & RT4 design space constants (640x640, Rs=190, Rt=152)
   const layout = useMemo(
-    () => computeSeatLayout(STATIC_SEAT_PERSONAS, TABLE_CONSTANTS.DESIGN_SIZE, 88),
+    () => computeSeatLayout(STATIC_SEAT_PERSONAS, TABLE_CONSTANTS.DESIGN_SIZE),
     []
   );
 
@@ -298,7 +298,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
         <div
           role="region"
           aria-label="The Council Round Table"
-          className="relative w-full max-w-[640px] aspect-square flex items-center justify-center overflow-hidden isolate z-0"
+          className="relative w-full max-w-[640px] aspect-square flex items-center justify-center isolate z-0"
         >
           {/* Base SVG Canvas: Table Surface, Rim, Ticks, Spotlight & Arcs */}
           <svg
@@ -308,8 +308,9 @@ export const RoundTable: React.FC<RoundTableProps> = ({
             <defs>
               {/* Tonal Table Disc Radial Gradient */}
               <radialGradient id="tableSurfaceGrad" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="var(--bg-secondary)" />
-                <stop offset="100%" stopColor="var(--bg-tertiary)" />
+                <stop offset="0%" stopColor="var(--bg-secondary)" stopOpacity="0.9" />
+                <stop offset="85%" stopColor="var(--bg-tertiary)" stopOpacity="0.95" />
+                <stop offset="100%" stopColor="var(--bg-secondary)" stopOpacity="1" />
               </radialGradient>
 
               {/* Active Speaker Spotlight Gradient */}
@@ -338,26 +339,36 @@ export const RoundTable: React.FC<RoundTableProps> = ({
               fill="url(#tableSurfaceGrad)"
             />
 
-            {/* Inner Rim (1px edge at subtle border opacity) */}
+            {/* Defined Table Outer Rim (Crisp 1.5px border) */}
             <circle
               cx={center.x}
               cy={center.y}
               r={tableDiscRadius}
               fill="none"
+              stroke="var(--border-default)"
+              strokeWidth={1.5}
+            />
+
+            {/* Inset Bevel Line */}
+            <circle
+              cx={center.x}
+              cy={center.y}
+              r={tableDiscRadius - 3}
+              fill="none"
               stroke="var(--border-subtle)"
               strokeWidth={1}
             />
 
-            {/* Faint Concentric Inner Ring at 0.62·Rt (R2) */}
+            {/* Concentric Inner Ring at 0.62·Rt (R2) */}
             <circle
               cx={center.x}
               cy={center.y}
               r={innerRingRadius}
               fill="none"
-              stroke="var(--border-subtle)"
+              stroke="var(--border-default)"
               strokeWidth={1}
               strokeDasharray="4 6"
-              strokeOpacity={0.6}
+              strokeOpacity={0.4}
             />
 
             {/* Speaker Spotlight */}
@@ -372,7 +383,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
 
             {/* 9 Seat Angle Tick Marks on the Table Rim */}
             {layout.seats.map((seat) => {
-              const tickInner = tableDiscRadius - 6;
+              const tickInner = tableDiscRadius - 8;
               const tickOuter = tableDiscRadius;
               const x1 = center.x + tickInner * Math.cos(seat.angleRad);
               const y1 = center.y + tickInner * Math.sin(seat.angleRad);
@@ -388,7 +399,7 @@ export const RoundTable: React.FC<RoundTableProps> = ({
                   y2={y2}
                   stroke="var(--text-muted)"
                   strokeWidth={1.5}
-                  strokeOpacity={0.35}
+                  strokeOpacity={0.5}
                 />
               );
             })}
@@ -579,8 +590,8 @@ export const RoundTable: React.FC<RoundTableProps> = ({
               <div
                 key={`map-seat-${seat.id}`}
                 style={{
-                  left: `${seat.x}px`,
-                  top: `${seat.y}px`,
+                  left: `${(seat.x / TABLE_CONSTANTS.DESIGN_SIZE) * 100}%`,
+                  top: `${(seat.y / TABLE_CONSTANTS.DESIGN_SIZE) * 100}%`,
                 }}
                 className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-auto"
               >

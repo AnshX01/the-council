@@ -36,8 +36,8 @@ export default defineConfig({
   ],
   webServer: {
     command: `npx next start -p ${TEST_PORT}`,
-    url: `http://localhost:${TEST_PORT}/api/health`,
-    reuseExistingServer: false,
+    url: `http://127.0.0.1:${TEST_PORT}/api/health`,
+    reuseExistingServer: !process.env.CI,
     timeout: 60 * 1000,
     env: {
       PORT: TEST_PORT,

@@ -369,3 +369,53 @@ export function useSessionStream(sessionId: string | null | undefined) {
     refresh: loadInitialSnapshot,
   };
 }
+
+// ── useUsage Hook ──────────────────────────────────────────────
+export interface UsageSummary {
+  monthlySpendUSD: number;
+  monthlySpendCapUSD: number;
+  remainingHeadroomUSD: number;
+  utilizationPercent: number;
+  allTimeSpendUSD: number;
+  totalCalls: number;
+  totalPromptTokens: number;
+  totalCandidateTokens: number;
+}
+
+export function useUsage() {
+  const [usage, setUsage] = useState<UsageSummary>({
+    monthlySpendUSD: 0,
+    monthlySpendCapUSD: 10,
+    remainingHeadroomUSD: 10,
+    utilizationPercent: 0,
+    allTimeSpendUSD: 0,
+    totalCalls: 0,
+    totalPromptTokens: 0,
+    totalCandidateTokens: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  const fetchUsage = useCallback(async () => {
+    try {
+      const res = await fetch('/api/v1/usage');
+      if (!res.ok) return;
+      const json = await res.json();
+      const raw = json.data?.usage || json.usage;
+      if (raw) {
+        setUsage(raw);
+      }
+    } catch {
+      // ignore network errors
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsage();
+    const interval = setInterval(fetchUsage, 10000);
+    return () => clearInterval(interval);
+  }, [fetchUsage]);
+
+  return { usage, loading, refresh: fetchUsage };
+}
