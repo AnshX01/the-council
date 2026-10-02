@@ -1,6 +1,13 @@
-'use client';
+/**
+ * Origin: The Council Round Table v3 (Section 6)
+ * Seated council persona node with chair-back arc, radial outward labels,
+ * confidence ring, delta chips, and status indicators.
+ */
 
-import React from 'react';
+"use client";
+
+import React from "react";
+import { motion } from "framer-motion";
 import {
   Compass,
   Sparkles,
@@ -12,28 +19,31 @@ import {
   Flame,
   Crown,
   CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  Volume2,
-  MinusCircle,
-} from 'lucide-react';
-import { PersonaProfile } from '@/types/persona';
-import { RatificationVote } from '@/types/session';
+  AlertCircle,
+  HelpCircle,
+} from "lucide-react";
+import { PersonaProfile } from "@/types/persona";
+import { RatificationVote } from "@/types/session";
+import { computeOutwardLabelAnchor } from "@/lib/council/geometry";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { cn } from "@/lib/utils";
 
 export interface SeatNodeProps {
   persona: PersonaProfile;
   x: number;
   y: number;
-  seatRadius: number;
+  seatRadius?: number;
+  angleDeg: number;
   isModerator: boolean;
   isSpeaking: boolean;
   isThinking?: boolean;
   isUnavailable?: boolean;
   confidence: number | null;
   confidenceDelta?: number | null;
-  vote?: RatificationVote;
+  vote?: RatificationVote | 'sign_off' | 'amendment' | 'dissent';
   isSelected?: boolean;
   focused?: boolean;
+  tabIndex?: number;
   onClick: () => void;
   onFocus?: () => void;
 }
@@ -54,7 +64,7 @@ export const SeatNode: React.FC<SeatNodeProps> = ({
   persona,
   x,
   y,
-  seatRadius = 26,
+  angleDeg,
   isModerator,
   isSpeaking,
   isThinking = false,
@@ -64,185 +74,185 @@ export const SeatNode: React.FC<SeatNodeProps> = ({
   vote,
   isSelected = false,
   focused = false,
+  tabIndex = -1,
   onClick,
   onFocus,
 }) => {
   const GlyphComponent = GLYPH_MAP[persona.avatarGlyph] || Crown;
-  const color = persona.colorHex || (isModerator ? '#64748B' : '#3B82F6');
+  const color = persona.colorHex || (isModerator ? "#6366F1" : "#3B82F6");
+
+  const size = isModerator ? 76 : 60;
+  const labelAnchor = computeOutwardLabelAnchor(angleDeg);
 
   // Confidence ring math
-  const ringRadius = seatRadius + 4;
+  const ringRadius = size / 2 + 4;
   const circumference = 2 * Math.PI * ringRadius;
-  const strokeDashoffset =
-    confidence !== null
-      ? circumference - (circumference * Math.min(100, Math.max(0, confidence))) / 100
-      : circumference;
+  const validConf = confidence !== null ? Math.min(100, Math.max(0, confidence)) : 0;
+  const strokeDashoffset = circumference - (circumference * validConf) / 100;
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onClick();
-    }
-  };
+  // Accessible Label
+  const deltaText =
+    confidenceDelta && confidenceDelta !== 0
+      ? `, ${confidenceDelta > 0 ? "up " + confidenceDelta : "down " + Math.abs(confidenceDelta)}`
+      : "";
+  const statusText = isUnavailable
+    ? "unavailable"
+    : isSpeaking
+    ? "speaking"
+    : isThinking
+    ? "thinking"
+    : "idle";
+  const ariaLabel = `${persona.name}, ${isModerator ? "Chair" : statusText}${
+    confidence !== null ? `, confidence ${confidence} percent${deltaText}` : ""
+  }`;
 
   return (
     <div
       style={{
         left: `${x}px`,
         top: `${y}px`,
-        width: `${seatRadius * 2 + 16}px`,
-        height: `${seatRadius * 2 + 16}px`,
+        width: `${size + 24}px`,
+        height: `${size + 24}px`,
       }}
       className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center select-none"
     >
+      {/* Outward Chair-Back Arc SVG */}
+      <svg
+        aria-hidden="true"
+        className="absolute inset-0 pointer-events-none w-full h-full overflow-visible"
+      >
+        <circle
+          cx={(size + 24) / 2}
+          cy={(size + 24) / 2}
+          r={size / 2 + 8}
+          fill="none"
+          stroke={color}
+          strokeWidth={3}
+          strokeOpacity={0.35}
+          strokeDasharray={`${(size + 8) * 0.9} ${(size + 8) * 2}`}
+          transform={`rotate(${angleDeg + 90}, ${(size + 24) / 2}, ${(size + 24) / 2})`}
+        />
+      </svg>
+
       <button
         type="button"
         role="button"
-        tabIndex={0}
-        aria-label={`${persona.name}${isModerator ? ' (Moderator)' : ''}${
-          isSpeaking ? ', currently speaking' : ''
-        }${confidence !== null ? `, confidence ${confidence}%` : ''}`}
-        aria-pressed={isSelected}
+        tabIndex={tabIndex}
+        aria-label={ariaLabel}
         onClick={onClick}
         onFocus={onFocus}
-        onKeyDown={handleKeyDown}
-        className={`group relative flex items-center justify-center rounded-full transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-black ${
-          isUnavailable
-            ? 'opacity-40 cursor-not-allowed filter grayscale'
-            : 'cursor-pointer hover:scale-105 active:scale-95'
-        } ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-black' : ''}`}
-        style={{
-          width: `${seatRadius * 2 + 8}px`,
-          height: `${seatRadius * 2 + 8}px`,
-        }}
+        className={cn(
+          "relative flex items-center justify-center rounded-2xl cursor-pointer transition-all duration-200 outline-none",
+          isModerator ? "w-[76px] h-[76px]" : "w-[60px] h-[60px]",
+          "bg-[var(--bg-tertiary)]",
+          isUnavailable ? "opacity-35 grayscale" : "opacity-100",
+          focused && "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-primary)]",
+          isSelected && "ring-2 ring-[var(--accent)]",
+          isSpeaking && "scale-[1.06]"
+        )}
       >
-        {/* SVG Confidence Ring */}
-        <svg
-          className="absolute inset-0 pointer-events-none -rotate-90"
-          width={seatRadius * 2 + 8}
-          height={seatRadius * 2 + 8}
-          viewBox={`0 0 ${(seatRadius + 4) * 2} ${(seatRadius + 4) * 2}`}
-        >
-          {/* Background track */}
-          <circle
-            cx={seatRadius + 4}
-            cy={seatRadius + 4}
-            r={ringRadius}
-            fill="none"
-            stroke="currentColor"
-            className="text-black/5 dark:text-white/10"
-            strokeWidth={2.5}
-          />
-          {/* Active progress */}
-          {!isUnavailable && confidence !== null && (
+        {/* Confidence Progress Ring SVG */}
+        {!isModerator && confidence !== null && (
+          <svg
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
+          >
             <circle
-              cx={seatRadius + 4}
-              cy={seatRadius + 4}
+              cx={size / 2}
+              cy={size / 2}
               r={ringRadius}
+              className="stroke-[var(--bg-secondary)]"
+              strokeWidth={2.5}
               fill="none"
+            />
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={ringRadius}
               stroke={color}
               strokeWidth={2.5}
               strokeDasharray={circumference}
               strokeDashoffset={strokeDashoffset}
               strokeLinecap="round"
-              className="transition-all duration-700 ease-out"
+              fill="none"
+              className="transition-all duration-500 ease-out"
             />
-          )}
-        </svg>
-
-        {/* Live Speaking Pulsing Halo */}
-        {isSpeaking && !isUnavailable && (
-          <span
-            className="absolute inset-0 rounded-full animate-ping opacity-30 pointer-events-none"
-            style={{ backgroundColor: color }}
-          />
+          </svg>
         )}
 
-        {/* Seat Node Glass Avatar Circle */}
+        {/* Persona Glyph */}
         <div
-          className={`relative flex items-center justify-center rounded-full glass-panel shadow-sm transition-all duration-200 ${
-            isSpeaking ? 'shadow-lg' : ''
-          }`}
-          style={{
-            width: `${seatRadius * 2}px`,
-            height: `${seatRadius * 2}px`,
-            backgroundColor: isSpeaking
-              ? `${color}25`
-              : `${color}12`,
-            borderColor: isSpeaking ? color : `${color}40`,
-            boxShadow: isSpeaking
-              ? `0 0 20px -2px ${color}80, 0 4px 12px rgba(0,0,0,0.15)`
-              : undefined,
-          }}
+          className={cn(
+            "flex items-center justify-center rounded-xl",
+            isModerator ? "w-11 h-11" : "w-9 h-9"
+          )}
+          style={{ color }}
         >
-          <GlyphComponent
-            className="transition-transform duration-200 group-hover:scale-110"
-            style={{
-              width: `${Math.round(seatRadius * 0.9)}px`,
-              height: `${Math.round(seatRadius * 0.9)}px`,
-              color,
-            }}
-          />
-
-          {/* Offline indicator */}
-          {isUnavailable && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full">
-              <MinusCircle className="w-4 h-4 text-white" />
-            </div>
-          )}
-
-          {/* Speaking volume indicator */}
-          {isSpeaking && (
-            <span
-              className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-white shadow-xs"
-              style={{ backgroundColor: color }}
-            >
-              <Volume2 className="w-2.5 h-2.5 animate-pulse" />
-            </span>
-          )}
+          <GlyphComponent size={isModerator ? 26 : 20} strokeWidth={2} />
         </div>
 
-        {/* Ballot Chip (Ratification Vote) */}
-        {vote && !isUnavailable && (
-          <span className="absolute -bottom-1 -right-1 flex items-center justify-center rounded-full shadow-xs bg-white dark:bg-black">
-            {vote.vote === 'SIGN_OFF' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 fill-emerald-500/20" />
-            ) : vote.vote === 'SIGN_OFF_WITH_AMENDMENT' ? (
-              <AlertTriangle className="w-4 h-4 text-amber-500 fill-amber-500/20" />
-            ) : (
-              <XCircle className="w-4 h-4 text-rose-500 fill-rose-500/20" />
-            )}
-          </span>
+        {/* Moderator "CHAIR" Nameplate Badge */}
+        {isModerator && (
+          <div className="absolute -bottom-2 bg-[var(--accent)] text-[var(--bg-primary)] px-2 py-0.5 rounded-full text-[9px] font-mono font-bold tracking-wider uppercase shadow-none">
+            CHAIR
+          </div>
         )}
 
-        {/* Delta Chip (+/- % shift) */}
-        {confidenceDelta !== undefined && confidenceDelta !== null && confidenceDelta !== 0 && !isUnavailable && (
-          <span
-            className={`absolute -top-2 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded-full text-[9px] font-mono font-bold leading-tight shadow-2xs ${
-              confidenceDelta > 0
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-            }`}
-          >
-            {confidenceDelta > 0 ? `+${confidenceDelta}%` : `${confidenceDelta}%`}
-          </span>
-        )}
+        {/* Ballot Badge (Ratification Phase) */}
+        {vote && (() => {
+          const voteVal = typeof vote === "string" ? vote.toLowerCase() : ((vote as any).vote || (vote as any).decision || "").toLowerCase();
+          const isSignOff = voteVal.includes("sign_off") || voteVal === "agree";
+          const isAmendment = voteVal.includes("amendment");
+          return (
+            <div
+              className={cn(
+                "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px]",
+                isSignOff
+                  ? "bg-[var(--status-low)] text-black"
+                  : isAmendment
+                  ? "bg-[var(--status-medium)] text-black"
+                  : "bg-[var(--status-urgent)] text-white"
+              )}
+              title={`Ballot: ${typeof vote === "string" ? vote : (vote as any).vote || (vote as any).decision}`}
+            >
+              {isSignOff ? "✓" : isAmendment ? "✎" : "✕"}
+            </div>
+          );
+        })()}
       </button>
 
-      {/* Label under node */}
-      <div className="absolute top-full mt-1.5 flex flex-col items-center pointer-events-none text-center">
-        <span className="text-[11px] font-medium tracking-tight text-gray-900 dark:text-gray-100 whitespace-nowrap leading-tight">
+      {/* Radially Outward Name & Confidence Label */}
+      <div
+        className={cn(
+          "absolute pointer-events-none flex flex-col items-center gap-0.5 whitespace-nowrap z-20",
+          labelAnchor === "top" && "bottom-full mb-1.5",
+          labelAnchor === "bottom" && "top-full mt-1.5",
+          labelAnchor === "left" && "right-full mr-2",
+          labelAnchor === "right" && "left-full ml-2",
+          labelAnchor === "top-left" && "bottom-full right-1/2 mb-1",
+          labelAnchor === "top-right" && "bottom-full left-1/2 mb-1",
+          labelAnchor === "bottom-left" && "top-full right-1/2 mt-1",
+          labelAnchor === "bottom-right" && "top-full left-1/2 mt-1"
+        )}
+      >
+        <span className="text-[11px] font-medium text-[var(--text-primary)]">
           {persona.name}
         </span>
-        {confidence !== null && !isUnavailable ? (
-          <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 tabular-nums leading-tight">
-            {confidence}%
-          </span>
-        ) : isModerator ? (
-          <span className="text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500 leading-tight">
-            Chair
-          </span>
-        ) : null}
+        {!isModerator && confidence !== null && (
+          <div className="flex items-center gap-1 text-[10px] font-mono text-[var(--text-muted)]">
+            <span>{confidence}%</span>
+            {confidenceDelta !== undefined && confidenceDelta !== null && confidenceDelta !== 0 && (
+              <span
+                className={cn(
+                  "font-bold",
+                  confidenceDelta > 0 ? "text-[var(--status-low)]" : "text-[var(--status-urgent)]"
+                )}
+              >
+                {confidenceDelta > 0 ? `▲ +${confidenceDelta}` : `▼ ${confidenceDelta}`}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

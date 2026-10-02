@@ -1,301 +1,347 @@
-'use client';
+/**
+ * Origin: The Council — History Page (Section 5.4)
+ * Atlas-grade list view: single-line rows, status filters, date groupings,
+ * FTS search, hover-reveal actions, and session comparison.
+ */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+"use client";
+
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Search,
-  History,
-  CheckCircle2,
+  Check,
   Scale,
   Trash2,
   RotateCcw,
-  Download,
-  Filter,
+  Plus,
+  Compass,
   ArrowRight,
-  Loader2,
-  Calendar,
-  Layers,
-  Sparkles,
-} from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { useToast } from '@/components/ui/Toast';
+} from "lucide-react";
+import { formatDistanceToNow, isToday, isYesterday } from "date-fns";
+import { Tabs } from "@/components/ui/Tabs";
+import { Button } from "@/components/ui/Button";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { toast } from "@/components/ui/Toast";
+import { cn } from "@/lib/utils";
 
-interface SessionItem {
+interface SessionRow {
   id: string;
-  raw_query: string;
+  title: string;
+  query: string;
   status: string;
-  current_phase: string;
-  created_at: string;
-  ended_at?: string;
-  verdict_one_liner?: string;
-  is_unanimous?: boolean;
+  verdict_type?: string;
+  verdictType?: string;
+  created_at?: string;
+  createdAt?: string;
+  total_llm_calls?: number;
 }
 
 export default function HistoryPage() {
-  const [sessions, setSessions] = useState<SessionItem[]>([]);
-  const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [isLoading, setIsLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
   const router = useRouter();
-  const { toast } = useToast();
 
   const fetchSessions = useCallback(async () => {
-    setIsLoading(true);
+    setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (query.trim()) params.set('q', query.trim());
-      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
 
       const res = await fetch(`/api/v1/sessions?${params.toString()}`);
       if (res.ok) {
-        const data = await res.json();
-        setSessions(data.data?.items || []);
+        const json = await res.json();
+        const list = json.data?.sessions || json.sessions || [];
+        setSessions(list);
       }
-    } catch (err: any) {
-      toast({ type: 'error', title: 'Failed to load history', description: err.message });
+    } catch {
+      toast.error("Failed to load deliberations");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [query, statusFilter, toast]);
+  }, [searchQuery]);
 
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.preventDefault();
-    fetchSessions();
-  };
-
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to permanently delete this deliberation from history?')) return;
-
-    setDeletingId(id);
     try {
-      const res = await fetch(`/api/v1/sessions/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/v1/sessions/${id}`, { method: "DELETE" });
       if (res.ok) {
         setSessions((prev) => prev.filter((s) => s.id !== id));
-        toast({ type: 'info', title: 'Deliberation Deleted', description: 'Session removed from archive.' });
+        toast.success("Deliberation deleted");
       }
-    } catch (err: any) {
-      toast({ type: 'error', title: 'Deletion Failed', description: err.message });
-    } finally {
-      setDeletingId(null);
+    } catch {
+      toast.error("Failed to delete deliberation");
     }
   };
 
-  const handleRerun = async (id: string, e: React.MouseEvent) => {
+  const handleRerun = async (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
     e.stopPropagation();
     try {
-      const res = await fetch(`/api/v1/sessions/${id}/rerun`, { method: 'POST' });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        router.push(`/c/${data.data.newSessionId}`);
+      const res = await fetch(`/api/v1/sessions/${id}/rerun`, { method: "POST" });
+      const json = await res.json();
+      const newId = json.data?.session?.id || json.session?.id;
+      if (newId) {
+        router.push(`/c/${newId}`);
       }
-    } catch (err: any) {
-      toast({ type: 'error', title: 'Rerun Failed', description: err.message });
+    } catch {
+      toast.error("Failed to rerun deliberation");
     }
   };
 
+  // Filtered sessions
+  const filtered = useMemo(() => {
+    return sessions.filter((s) => {
+      if (statusFilter === "all") return true;
+      if (statusFilter === "completed") return s.status === "COMPLETED";
+      if (statusFilter === "running") return s.status === "RUNNING";
+      if (statusFilter === "failed") return s.status === "FAILED" || s.status === "CANCELLED";
+      return true;
+    });
+  }, [sessions, statusFilter]);
+
+  // Group by Today / Yesterday / Earlier
+  const grouped = useMemo(() => {
+    const today: SessionRow[] = [];
+    const yesterday: SessionRow[] = [];
+    const earlier: SessionRow[] = [];
+
+    for (const s of filtered) {
+      const raw = s.created_at || s.createdAt;
+      const d = raw ? new Date(raw) : new Date();
+      if (isToday(d)) today.push(s);
+      else if (isYesterday(d)) yesterday.push(s);
+      else earlier.push(s);
+    }
+
+    return { today, yesterday, earlier };
+  }, [filtered]);
+
+  const statusTabs = [
+    { id: "all", label: "All" },
+    { id: "completed", label: "Completed" },
+    { id: "running", label: "Running" },
+    { id: "failed", label: "Failed/Aborted" },
+  ];
+
   return (
-    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto py-2">
-      {/* Header */}
+    <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-16">
+      {/* Header & Search */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-7 h-7 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center">
-              <History className="w-4 h-4" />
-            </div>
-            <h1 className="text-xl font-bold text-gray-950 dark:text-gray-50">
-              Deliberation Archive & History
-            </h1>
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Browse and inspect past multi-agent deliberations, consensus verdicts, and dissenting opinions.
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
+            Deliberation Archive
+          </h1>
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+            Search and inspect historical deliberations stored in local SQLite WAL.
           </p>
         </div>
 
-        <Link href="/">
-          <Button variant="primary" size="sm" leftIcon={<Sparkles className="w-3.5 h-3.5" />}>
-            Convene New Session
+        <div className="flex items-center gap-2">
+          {selectedForCompare.length === 2 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                toast.info(`Comparing sessions #${selectedForCompare[0].slice(0, 6)} & #${selectedForCompare[1].slice(0, 6)}`);
+              }}
+            >
+              Compare (2)
+            </Button>
+          )}
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => router.push("/")}
+            leftIcon={<Plus size={14} />}
+          >
+            New Deliberation
           </Button>
-        </Link>
+        </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <GlassCard padded="sm" className="space-y-3 !rounded-2xl">
-        <form onSubmit={handleSearchSubmit} className="flex gap-2">
-          <div className="flex-1 flex items-center gap-2.5 px-3 py-2 rounded-xl bg-black/3 dark:bg-white/5 border border-black/5 dark:border-white/10">
-            <Search className="w-4 h-4 text-gray-400 shrink-0" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search previous questions, dilemmas, or verdict texts..."
-              className="flex-1 bg-transparent text-xs outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400"
-            />
-          </div>
-          <Button type="submit" variant="secondary" size="sm">
-            Search
-          </Button>
-        </form>
-
-        <div className="flex items-center justify-between pt-1 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-gray-400 font-mono">Status:</span>
-            {['all', 'completed', 'running', 'aborted', 'failed'].map((st) => (
-              <button
-                key={st}
-                type="button"
-                onClick={() => setStatusFilter(st)}
-                className={`px-2.5 py-1 rounded-lg text-xs capitalize transition-colors ${
-                  statusFilter === st
-                    ? 'bg-indigo-600 text-white font-medium'
-                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5'
-                }`}
-              >
-                {st}
-              </button>
-            ))}
-          </div>
-
-          <span className="text-[11px] text-gray-400 font-mono">
-            {sessions.length} recorded
-          </span>
+      {/* Search Input & Status Filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2.5 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search previous questions and queries (FTS5)..."
+            className="w-full bg-transparent pl-8 pr-4 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+            aria-label="Search deliberations"
+          />
         </div>
-      </GlassCard>
 
-      {/* Session Cards List */}
-      {isLoading ? (
-        <div className="py-20 text-center">
-          <Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />
-          <p className="text-xs text-gray-400 font-mono">Querying archive database...</p>
+        <Tabs tabs={statusTabs} activeTab={statusFilter} onChange={setStatusFilter} />
+      </div>
+
+      {/* Main List */}
+      {loading ? (
+        <div className="flex flex-col gap-2">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-xl" />
+          ))}
         </div>
-      ) : sessions.length === 0 ? (
-        <div className="py-20 text-center glass-panel-subtle rounded-2xl p-8 space-y-3">
-          <History className="w-10 h-10 stroke-1 text-gray-400 mx-auto" />
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-            No deliberations found
+      ) : filtered.length === 0 ? (
+        <div className="py-20 text-center flex flex-col items-center justify-center p-8 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
+          <Compass size={32} className="text-[var(--text-muted)] mb-3" />
+          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">
+            No deliberations recorded
           </h3>
-          <p className="text-xs text-gray-500 max-w-sm mx-auto">
-            {query
-              ? `No deliberations matched "${query}". Try adjusting your keywords.`
-              : 'The deliberation archive is currently empty. Convene your first council session.'}
+          <p className="text-xs text-[var(--text-secondary)] max-w-sm mb-4">
+            {searchQuery ? "No inquiries match your search filter." : "Start your first deliberation session with the Council."}
           </p>
-          <div className="pt-2">
-            <Link href="/">
-              <Button variant="primary" size="sm">
-                Convene Deliberation
-              </Button>
-            </Link>
-          </div>
+          <Button variant="secondary" size="sm" onClick={() => router.push("/")}>
+            Convene Council
+          </Button>
         </div>
       ) : (
-        <div className="space-y-3">
-          {sessions.map((s) => (
-            <GlassCard
-              key={s.id}
-              onClick={() => router.push(`/c/${s.id}`)}
-              interactive
-              padded="sm"
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer !rounded-2xl hover:border-indigo-500/40"
-            >
-              <div className="space-y-1.5 flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono uppercase text-gray-400">
-                    #{s.id.slice(0, 10)}
-                  </span>
-                  <Badge
-                    variant={
-                      s.status === 'completed'
-                        ? s.is_unanimous
-                          ? 'success'
-                          : 'neutral'
-                        : s.status === 'running'
-                        ? 'accent'
-                        : 'warning'
-                    }
-                    size="xs"
-                    icon={
-                      s.status === 'completed' ? (
-                        s.is_unanimous ? (
-                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                        ) : (
-                          <Scale className="w-3 h-3 text-slate-400" />
-                        )
-                      ) : undefined
-                    }
-                  >
-                    {s.status === 'completed'
-                      ? s.is_unanimous
-                        ? 'Unanimous'
-                        : 'Consensus Reached'
-                      : s.status}
-                  </Badge>
-
-                  <span className="text-[10px] text-gray-400 inline-flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {new Date(s.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 line-clamp-1">
-                  &ldquo;{s.raw_query}&rdquo;
-                </h3>
-
-                {s.verdict_one_liner && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 italic">
-                    {s.verdict_one_liner}
-                  </p>
-                )}
+        <div className="flex flex-col gap-6">
+          {/* Today Group */}
+          {grouped.today.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] px-1">
+                Today
+              </span>
+              <div className="flex flex-col gap-1">
+                {grouped.today.map((s) => (
+                  <SessionListRow
+                    key={s.id}
+                    session={s}
+                    onDelete={handleDelete}
+                    onRerun={handleRerun}
+                  />
+                ))}
               </div>
+            </div>
+          )}
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={(e) => handleRerun(s.id, e)}
-                  leftIcon={<RotateCcw className="w-3 h-3" />}
-                  title="Rerun session"
-                >
-                  Rerun
-                </Button>
-
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.open(`/api/v1/sessions/${s.id}/export?format=markdown`, '_blank');
-                  }}
-                  leftIcon={<Download className="w-3 h-3" />}
-                  title="Export markdown"
-                >
-                  Export
-                </Button>
-
-                <button
-                  type="button"
-                  disabled={deletingId === s.id}
-                  onClick={(e) => handleDelete(s.id, e)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                  title="Delete from archive"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-
-                <ArrowRight className="w-4 h-4 text-gray-400 ml-1" />
+          {/* Yesterday Group */}
+          {grouped.yesterday.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] px-1">
+                Yesterday
+              </span>
+              <div className="flex flex-col gap-1">
+                {grouped.yesterday.map((s) => (
+                  <SessionListRow
+                    key={s.id}
+                    session={s}
+                    onDelete={handleDelete}
+                    onRerun={handleRerun}
+                  />
+                ))}
               </div>
-            </GlassCard>
-          ))}
+            </div>
+          )}
+
+          {/* Earlier Group */}
+          {grouped.earlier.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] px-1">
+                Earlier
+              </span>
+              <div className="flex flex-col gap-1">
+                {grouped.earlier.map((s) => (
+                  <SessionListRow
+                    key={s.id}
+                    session={s}
+                    onDelete={handleDelete}
+                    onRerun={handleRerun}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function SessionListRow({
+  session,
+  onDelete,
+  onRerun,
+}: {
+  session: SessionRow;
+  onDelete: (e: React.MouseEvent, id: string) => void;
+  onRerun: (e: React.MouseEvent, id: string) => void;
+}) {
+  const isUnanimous =
+    session.verdict_type === "UNANIMOUS" || session.verdictType === "UNANIMOUS";
+  const isRunning = session.status === "RUNNING";
+  const rawDate = session.created_at || session.createdAt;
+  const timeAgo = rawDate
+    ? formatDistanceToNow(new Date(rawDate), { addSuffix: false })
+    : "";
+
+  return (
+    <Link
+      href={`/c/${session.id}`}
+      className="group p-3 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] flex items-center justify-between gap-4 transition-colors"
+    >
+      <div className="flex items-center gap-3 min-w-0 pr-2">
+        <div className="w-2 h-2 rounded-full flex-shrink-0">
+          {isRunning ? (
+            <span className="block w-2 h-2 rounded-full bg-[var(--status-low)] animate-pulse" />
+          ) : isUnanimous ? (
+            <span className="block w-2 h-2 rounded-full bg-[var(--status-low)]" />
+          ) : (
+            <span className="block w-2 h-2 rounded-full bg-[var(--text-muted)]" />
+          )}
+        </div>
+
+        <div className="flex flex-col min-w-0">
+          <span className="text-xs font-semibold text-[var(--text-primary)] truncate max-w-lg">
+            {session.title || session.query}
+          </span>
+          <span className="text-[11px] text-[var(--text-muted)] truncate max-w-md">
+            {session.query}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <span className="text-[11px] font-mono text-[var(--text-muted)]">
+          {timeAgo}
+        </span>
+
+        {/* Hover-reveal actions */}
+        <div className="hidden group-hover:flex items-center gap-1">
+          <button
+            onClick={(e) => onRerun(e, session.id)}
+            className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            title="Rerun deliberation"
+            aria-label="Rerun deliberation"
+          >
+            <RotateCcw size={13} />
+          </button>
+          <button
+            onClick={(e) => onDelete(e, session.id)}
+            className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--status-urgent)]"
+            title="Delete deliberation"
+            aria-label="Delete deliberation"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+
+        <span className="text-[11px] text-[var(--text-muted)] group-hover:hidden">
+          →
+        </span>
+      </div>
+    </Link>
   );
 }

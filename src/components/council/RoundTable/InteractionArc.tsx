@@ -1,9 +1,18 @@
-'use client';
+/**
+ * Origin: The Council Round Table v3 (Section 6)
+ * SVG dialogue arc connecting speaker to addressed peer with stance encoding:
+ * AGREE: solid with checkmark
+ * CHALLENGE: dashed (6 4) with lightning
+ * CONCEDE: dotted (1 4) with open hand
+ * Trail fading support (1.0 -> 0.6 -> 0.3).
+ */
 
-import React from 'react';
-import { computeInteractionArc } from '@/lib/council/geometry';
+"use client";
 
-export type InteractionStance = 'AGREE' | 'CHALLENGE' | 'CONCEDE' | 'NEUTRAL';
+import React from "react";
+import { computeInteractionArc } from "@/lib/council/geometry";
+
+export type InteractionStance = "AGREE" | "CHALLENGE" | "CONCEDE" | "NEUTRAL";
 
 export interface InteractionArcProps {
   source: { x: number; y: number };
@@ -11,6 +20,7 @@ export interface InteractionArcProps {
   center: { x: number; y: number };
   stance?: InteractionStance;
   speakerColor?: string;
+  opacity?: number;
   isActive?: boolean;
 }
 
@@ -18,81 +28,75 @@ export const InteractionArc: React.FC<InteractionArcProps> = ({
   source,
   target,
   center,
-  stance = 'AGREE',
-  speakerColor,
+  stance = "AGREE",
+  speakerColor = "#6366F1",
+  opacity = 1.0,
   isActive = true,
 }) => {
-  const pathD = computeInteractionArc(source, target, center, { curvature: 0.42 });
+  const pathD = computeInteractionArc(source, target, center, { curvature: 0.52 });
 
-  // Map stance to stroke style & color
-  let strokeColor = speakerColor || '#6366F1';
-  let strokeDasharray = 'none';
-  let strokeWidth = isActive ? 2.5 : 1.5;
+  // Stance line styles
+  let strokeDasharray = "none";
+  let strokeLinecap: "round" | "butt" = "round";
+  let markerSymbol = "✓";
 
-  switch (stance) {
-    case 'CHALLENGE':
-      strokeColor = '#EF4444'; // Rose / Red
-      strokeDasharray = '7 5';
-      break;
-    case 'CONCEDE':
-      strokeColor = '#F59E0B'; // Amber
-      strokeDasharray = '3 4';
-      break;
-    case 'AGREE':
-      strokeColor = '#10B981'; // Emerald
-      strokeDasharray = 'none';
-      break;
-    case 'NEUTRAL':
-    default:
-      strokeColor = speakerColor || '#818CF8';
-      strokeDasharray = '4 4';
-      break;
+  if (stance === "CHALLENGE") {
+    strokeDasharray = "6 4";
+    markerSymbol = "⚡";
+  } else if (stance === "CONCEDE") {
+    strokeDasharray = "1 4";
+    strokeLinecap = "round";
+    markerSymbol = "✋";
+  } else if (stance === "AGREE") {
+    strokeDasharray = "none";
+    markerSymbol = "✓";
   }
 
+  // Midpoint approximation for stance glyph
+  const midX = Math.round((source.x + target.x) / 2 + (center.x - (source.x + target.x) / 2) * 0.45);
+  const midY = Math.round((source.y + target.y) / 2 + (center.y - (source.y + target.y) / 2) * 0.45);
+
   return (
-    <g className="interaction-arc pointer-events-none transition-opacity duration-300">
-      {/* Background glow path */}
-      {isActive && (
+    <g
+      className="interaction-arc pointer-events-none transition-opacity duration-300 select-none"
+      opacity={opacity}
+      aria-hidden="true"
+    >
+      {/* Background Soft Glow */}
+      {isActive && opacity >= 0.8 && (
         <path
           d={pathD}
           fill="none"
-          stroke={strokeColor}
-          strokeWidth={strokeWidth + 3}
-          strokeOpacity={0.2}
+          stroke={speakerColor}
+          strokeWidth={4}
+          strokeOpacity={0.15}
           strokeLinecap="round"
-          className="blur-[2px]"
         />
       )}
 
-      {/* Main interaction arc path */}
+      {/* Main Trajectory Path */}
       <path
         d={pathD}
         fill="none"
-        stroke={strokeColor}
-        strokeWidth={strokeWidth}
+        stroke={speakerColor}
+        strokeWidth={1.5}
         strokeDasharray={strokeDasharray}
-        strokeLinecap="round"
-        strokeOpacity={isActive ? 0.9 : 0.4}
-        className={isActive ? 'animate-pulse' : ''}
+        strokeLinecap={strokeLinecap}
       />
 
-      {/* Origin indicator dot */}
-      <circle
-        cx={source.x}
-        cy={source.y}
-        r={3}
-        fill={strokeColor}
-        opacity={0.8}
-      />
-
-      {/* Destination indicator dot */}
-      <circle
-        cx={target.x}
-        cy={target.y}
-        r={3}
-        fill={strokeColor}
-        opacity={0.8}
-      />
+      {/* Stance Indicator Glyph at Arc Midpoint (Ensures No Color-Only Meaning) */}
+      <g transform={`translate(${midX}, ${midY})`}>
+        <circle r={7} fill="var(--bg-secondary)" stroke="var(--border-subtle)" strokeWidth={1} />
+        <text
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={8}
+          fill={speakerColor}
+          className="font-mono font-bold"
+        >
+          {markerSymbol}
+        </text>
+      </g>
     </g>
   );
 };

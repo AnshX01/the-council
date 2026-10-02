@@ -1,14 +1,19 @@
-'use client';
+/**
+ * Origin: The Council Round Table v3 (Section 6)
+ * Docked Atlas-style scrubber pill: play/pause, prev/next, speed (1x/2x/4x), step counter.
+ */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Play,
   Pause,
   RotateCcw,
   ChevronLeft,
   ChevronRight,
-  FastForward,
-} from 'lucide-react';
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface ReplayScrubberProps {
   totalSteps: number;
@@ -25,7 +30,7 @@ export const ReplayScrubber: React.FC<ReplayScrubberProps> = ({
   onStepChange,
   isPlaying: externalIsPlaying,
   onPlayToggle,
-  className = '',
+  className = "",
 }) => {
   const [internalIsPlaying, setInternalIsPlaying] = useState(false);
   const [speed, setSpeed] = useState<1 | 2 | 4>(1);
@@ -42,7 +47,7 @@ export const ReplayScrubber: React.FC<ReplayScrubberProps> = ({
   useEffect(() => {
     if (!isPlaying) return;
 
-    const intervalMs = Math.round(1200 / speed);
+    const intervalMs = Math.round(1000 / speed);
     const timer = setInterval(() => {
       onStepChange(currentStep < totalSteps - 1 ? currentStep + 1 : 0);
       if (currentStep >= totalSteps - 1) {
@@ -63,76 +68,97 @@ export const ReplayScrubber: React.FC<ReplayScrubberProps> = ({
 
   return (
     <div
-      className={`glass-panel-subtle p-3 rounded-xl flex items-center gap-3 select-none ${className}`}
       role="region"
       aria-label="Deliberation replay controls"
+      className={cn(
+        "inline-flex items-center gap-2 px-3 py-1.5 rounded-full",
+        "bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-xs select-none",
+        className
+      )}
     >
+      {/* Rewind */}
+      <button
+        type="button"
+        onClick={() => {
+          setIsPlaying(false);
+          onStepChange(0);
+        }}
+        className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+        title="Rewind to start"
+        aria-label="Rewind to start"
+      >
+        <RotateCcw size={13} />
+      </button>
+
+      {/* Prev */}
+      <button
+        type="button"
+        onClick={() => {
+          setIsPlaying(false);
+          onStepChange(Math.max(0, currentStep - 1));
+        }}
+        disabled={currentStep <= 0}
+        className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-30 transition-colors"
+        title="Previous event"
+        aria-label="Previous event"
+      >
+        <ChevronLeft size={14} />
+      </button>
+
       {/* Play / Pause */}
       <button
         type="button"
         onClick={() => setIsPlaying(!isPlaying)}
-        aria-label={isPlaying ? 'Pause replay' : 'Play replay'}
-        className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        className="w-7 h-7 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] flex items-center justify-center transition-transform active:scale-95"
+        title={isPlaying ? "Pause" : "Play"}
+        aria-label={isPlaying ? "Pause replay" : "Play replay"}
       >
-        {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
+        {isPlaying ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" className="ml-0.5" />}
       </button>
 
-      {/* Step Back */}
+      {/* Next */}
       <button
         type="button"
-        disabled={currentStep <= 0}
-        onClick={() => onStepChange(Math.max(0, currentStep - 1))}
-        aria-label="Previous step"
-        className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:pointer-events-none hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-      >
-        <ChevronLeft className="w-4 h-4" />
-      </button>
-
-      {/* Timeline Slider */}
-      <div className="flex-1 flex items-center gap-2">
-        <input
-          type="range"
-          min={0}
-          max={totalSteps - 1}
-          value={currentStep}
-          onChange={(e) => onStepChange(parseInt(e.target.value, 10))}
-          aria-label="Deliberation timeline scrub position"
-          className="w-full accent-indigo-600 cursor-pointer h-1.5 bg-gray-200 dark:bg-zinc-700 rounded-lg appearance-none"
-        />
-        <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
-          {currentStep + 1} / {totalSteps}
-        </span>
-      </div>
-
-      {/* Step Forward */}
-      <button
-        type="button"
+        onClick={() => {
+          setIsPlaying(false);
+          onStepChange(Math.min(totalSteps - 1, currentStep + 1));
+        }}
         disabled={currentStep >= totalSteps - 1}
-        onClick={() => onStepChange(Math.min(totalSteps - 1, currentStep + 1))}
-        aria-label="Next step"
-        className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:pointer-events-none hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+        className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-30 transition-colors"
+        title="Next event"
+        aria-label="Next event"
       >
-        <ChevronRight className="w-4 h-4" />
+        <ChevronRight size={14} />
       </button>
 
-      {/* Speed Multiplier Button */}
+      {/* Range slider */}
+      <input
+        type="range"
+        min={0}
+        max={totalSteps - 1}
+        value={currentStep}
+        onChange={(e) => {
+          setIsPlaying(false);
+          onStepChange(Number(e.target.value));
+        }}
+        className="w-24 sm:w-36 h-1 bg-[var(--bg-tertiary)] rounded appearance-none cursor-pointer accent-[var(--accent)]"
+        aria-label="Replay timeline scrubber"
+      />
+
+      {/* Counter */}
+      <span className="font-mono text-[11px] text-[var(--text-muted)] min-w-[48px] text-right">
+        {currentStep + 1}/{totalSteps}
+      </span>
+
+      {/* Speed */}
       <button
         type="button"
         onClick={toggleSpeed}
-        aria-label={`Playback speed: ${speed}x`}
-        className="px-2 py-1 rounded-md text-[11px] font-mono font-semibold bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-gray-700 dark:text-gray-300 transition-colors"
+        className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+        title="Playback speed"
+        aria-label={`Playback speed ${speed}x`}
       >
         {speed}x
-      </button>
-
-      {/* Reset to Start */}
-      <button
-        type="button"
-        onClick={() => onStepChange(0)}
-        aria-label="Rewind to start"
-        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-      >
-        <RotateCcw className="w-3.5 h-3.5" />
       </button>
     </div>
   );

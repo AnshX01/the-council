@@ -1,30 +1,53 @@
-'use client';
+/**
+ * Origin: The Council Round Table v3 (Section 6)
+ * Hero Circular Council Table:
+ * - Moderator anchored at 12 o'clock (head of table)
+ * - Tonal glass table disc with inner rim, tick marks, and speaker spotlight
+ * - 9 seated personas with chair-back arcs, outward labels, and confidence rings
+ * - Live SVG dialogue arcs with stance encoding and fading trails
+ * - Center convergence / ratification medallion
+ * - Dynamic collision-free speech bubble
+ * - Post-deliberation interaction map toggle
+ * - Replay scrubber pill
+ * - Accessible List View toggle & roving tabindex keyboard navigation
+ */
 
-import React, { useState, useEffect, useRef } from 'react';
+"use client";
+
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ALL_PERSONAS,
   MODERATOR,
   COUNCIL_MEMBERS,
   PersonaProfile,
-  getPersonaById,
   findPersonaById,
-} from '@/lib/council/personas';
-import { computeSeatLayout, SeatPersona } from '@/lib/council/geometry';
-import { SeatNode } from './SeatNode';
-import { InteractionArc, InteractionStance } from './InteractionArc';
-import { VerdictSeal } from './VerdictSeal';
-import { PersonaDrawer } from './PersonaDrawer';
-import { ReplayScrubber } from './ReplayScrubber';
-import { PersonaId } from '@/types/persona';
+} from "@/lib/council/personas";
+import {
+  computeSeatLayout,
+  computeSpeechBubbleAnchor,
+  SeatPersona,
+} from "@/lib/council/geometry";
+import { SeatNode } from "./SeatNode";
+import { InteractionArc, InteractionStance } from "./InteractionArc";
+import { VerdictSeal } from "./VerdictSeal";
+import { PersonaDrawer } from "./PersonaDrawer";
+import { ReplayScrubber } from "./ReplayScrubber";
+import { PersonaId } from "@/types/persona";
 import {
   DeliberationPhase,
   OpeningPosition,
   CrossExamRound,
   RatificationVote,
-} from '@/types/session';
-import { LayoutGrid, CircleDot, Volume2 } from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Badge } from '@/components/ui/Badge';
+} from "@/types/session";
+import { CouncilSSEEvent } from "@/types/events";
+import {
+  selectConfidenceTrajectories,
+  selectSeatStates,
+  selectInteractionMap,
+  InteractionPair,
+} from "@/lib/ui/selectors";
+import { List, CircleDot, Network } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface ActiveInteraction {
   sourceId: PersonaId;
@@ -33,16 +56,20 @@ export interface ActiveInteraction {
 }
 
 export interface RoundTableProps {
-  memberStatuses?: Record<PersonaId, 'active' | 'unavailable'>;
-  currentSpeakerId?: PersonaId;
+  memberStatuses?: Record<PersonaId, "active" | "unavailable">;
+  currentSpeakerId?: PersonaId | null;
   activeInteraction?: ActiveInteraction | null;
   openingPositions?: Partial<Record<PersonaId, OpeningPosition>>;
   crossExamRounds?: CrossExamRound[];
-  ratificationVotes?: Partial<Record<PersonaId, RatificationVote>>;
+  ratificationVotes?: Partial<Record<PersonaId, RatificationVote | 'sign_off' | 'amendment' | 'dissent'>>;
   phase?: DeliberationPhase;
+  roundNumber?: number;
+  maxRounds?: number;
   convergenceScore?: number;
   isUnanimous?: boolean;
-  status?: 'idle' | 'running' | 'completed' | 'failed' | 'aborted';
+  status?: "idle" | "running" | "completed" | "failed" | "aborted";
+  lastSpeakerSnippet?: string;
+  allEvents?: CouncilSSEEvent[];
   onSelectPersona?: (persona: PersonaProfile) => void;
   onViewVerdict?: () => void;
   replayStep?: number;
@@ -51,348 +78,510 @@ export interface RoundTableProps {
   className?: string;
 }
 
+interface ArcTrailEntry {
+  sourceId: PersonaId;
+  targetId: PersonaId;
+  stance: InteractionStance;
+  timestamp: number;
+}
+
+const STATIC_SEAT_PERSONAS: SeatPersona[] = ALL_PERSONAS.map((p) => ({
+  id: p.id,
+  name: p.name,
+  role: p.id === "moderator" ? "moderator" : "voting",
+  color: p.colorHex,
+}));
+
 export const RoundTable: React.FC<RoundTableProps> = ({
-  memberStatuses = {} as Record<PersonaId, 'active' | 'unavailable'>,
+  memberStatuses = {} as Record<PersonaId, "active" | "unavailable">,
   currentSpeakerId,
   activeInteraction,
   openingPositions = {},
   crossExamRounds = [],
   ratificationVotes = {},
-  phase = 'PHASE_0_FRAMING',
+  phase = "PHASE_0_FRAMING",
+  roundNumber = 1,
+  maxRounds = 3,
   convergenceScore = 0,
   isUnanimous = false,
-  status = 'idle',
+  status = "idle",
+  lastSpeakerSnippet,
+  allEvents = [],
   onSelectPersona,
   onViewVerdict,
   replayStep,
   totalReplaySteps,
   onReplayStepChange,
-  className = '',
+  className = "",
 }) => {
-  const [viewMode, setViewMode] = useState<'round' | 'list'>('round');
+  const [viewMode, setViewMode] = useState<"round" | "list">("round");
   const [selectedPersona, setSelectedPersona] = useState<PersonaProfile | null>(null);
   const [focusedSeatIndex, setFocusedSeatIndex] = useState<number>(0);
-  const tableRef = useRef<HTMLDivElement>(null);
+  const [arcTrail, setArcTrail] = useState<ArcTrailEntry[]>([]);
+  const [showInteractionMap, setShowInteractionMap] = useState<boolean>(false);
+  const stageRef = useRef<HTMLDivElement>(null);
 
-  // Convert personas for geometry calculations
-  const seatPersonas: SeatPersona[] = ALL_PERSONAS.map((p) => ({
-    id: p.id,
-    name: p.name,
-    role: p.id === 'moderator' ? 'moderator' : 'voting',
-    color: p.colorHex,
-  }));
+  const layout = useMemo(() => computeSeatLayout(STATIC_SEAT_PERSONAS, 640, 72), []);
 
-  // Standard table size 580x580 with 68px padding for seat nodes
-  const layout = computeSeatLayout(seatPersonas, 580, 68);
+  // Compute confidence trajectories and seat states
+  const trajectories = useMemo(() => {
+    return selectConfidenceTrajectories(allEvents.length > 0 ? allEvents : null);
+  }, [allEvents]);
 
-  const handleSeatClick = (persona: PersonaProfile) => {
-    setSelectedPersona(persona);
-    onSelectPersona?.(persona);
-  };
-
-  // Keyboard navigation for seats (Arrow keys rotate around table)
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    const totalSeats = layout.seats.length;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      setFocusedSeatIndex((prev) => (prev + 1) % totalSeats);
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      setFocusedSeatIndex((prev) => (prev - 1 + totalSeats) % totalSeats);
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      const seat = layout.seats[focusedSeatIndex];
-      const p = findPersonaById(seat.id);
-      if (p) handleSeatClick(p);
+  const seatStates = useMemo(() => {
+    const unavailMap: Partial<Record<PersonaId, string>> = {};
+    for (const [pid, st] of Object.entries(memberStatuses)) {
+      if (st === "unavailable") {
+        unavailMap[pid as PersonaId] = "Persona unavailable";
+      }
     }
-  };
+    return selectSeatStates(
+      trajectories,
+      currentSpeakerId,
+      activeInteraction?.targetId,
+      activeInteraction?.stance,
+      unavailMap
+    );
+  }, [trajectories, currentSpeakerId, activeInteraction, memberStatuses]);
 
-  // Helper to extract persona current values
-  const getPersonaData = (id: PersonaId) => {
-    const isUnavailable = memberStatuses[id] === 'unavailable';
-    const latestRound = crossExamRounds[crossExamRounds.length - 1];
-    const turn = latestRound?.turns[id];
-    const opening = openingPositions[id];
-
-    let confidence = turn?.updatedConfidence ?? opening?.confidenceScore ?? null;
-    let confidenceDelta: number | null = null;
-    if (turn?.updatedConfidence !== undefined && opening?.confidenceScore !== undefined) {
-      confidenceDelta = turn.updatedConfidence - opening.confidenceScore;
-    }
-    const vote = ratificationVotes[id];
-
-    // Statements made in session
-    const statements: Array<{
-      phase: string;
-      round?: number;
-      text: string;
-      stance?: string;
-      confidence?: number;
-    }> = [];
-
-    if (opening) {
-      statements.push({
-        phase: 'Opening Position',
-        text: opening.positionSummary,
-        confidence: opening.confidenceScore,
+  // Track arc trails (keep last 3 arcs with fading opacities)
+  useEffect(() => {
+    if (activeInteraction) {
+      setArcTrail((prev) => {
+        const next = [
+          {
+            sourceId: activeInteraction.sourceId,
+            targetId: activeInteraction.targetId,
+            stance: activeInteraction.stance,
+            timestamp: Date.now(),
+          },
+          ...prev.slice(0, 2),
+        ];
+        return next;
       });
     }
+  }, [activeInteraction]);
 
-    crossExamRounds.forEach((round, rIndex) => {
-      const rTurn = round.turns[id];
-      if (rTurn) {
-        statements.push({
-          phase: 'Cross-Examination',
-          round: rIndex + 1,
-          text: rTurn.updatedPosition,
-          confidence: rTurn.updatedConfidence,
-          stance: rTurn.responses?.[0]?.action,
-        });
-      }
-    });
+  // Aggregate interaction map
+  const interactionMap = useMemo(() => {
+    return selectInteractionMap(allEvents);
+  }, [allEvents]);
 
-    return { isUnavailable, confidence, confidenceDelta, vote, opening, statements };
+  // Listen for custom event to toggle list view
+  useEffect(() => {
+    const handleToggle = () => {
+      setViewMode((v) => (v === "round" ? "list" : "round"));
+    };
+    window.addEventListener("council:toggle-table-view", handleToggle);
+    return () => window.removeEventListener("council:toggle-table-view", handleToggle);
+  }, []);
+
+  // Keyboard navigation across seats
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    const total = layout.seats.length;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      setFocusedSeatIndex((i) => (i + 1) % total);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      setFocusedSeatIndex((i) => (i - 1 + total) % total);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setFocusedSeatIndex(0); // Moderator
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const seat = layout.seats[focusedSeatIndex];
+      const p = findPersonaById(seat.id as PersonaId);
+      if (p) setSelectedPersona(p);
+    }
   };
 
-  // Locate coordinates for active interaction arc
-  let sourceCoords = null;
-  let targetCoords = null;
-  let speakerColor = '#6366F1';
+  const center = { x: layout.centerX, y: layout.centerY };
+  const tableDiscRadius = layout.radius * 0.58; // ≈ 144px radius filled table
 
-  if (activeInteraction) {
-    const sSeat = layout.seats.find((s) => s.id === activeInteraction.sourceId);
-    const tSeat = layout.seats.find((s) => s.id === activeInteraction.targetId);
-    if (sSeat && tSeat) {
-      sourceCoords = { x: sSeat.x, y: sSeat.y };
-      targetCoords = { x: tSeat.x, y: tSeat.y };
-      const sProfile = findPersonaById(sSeat.id);
-      if (sProfile) speakerColor = sProfile.colorHex;
-    }
-  }
-
-  const selectedData = selectedPersona ? getPersonaData(selectedPersona.id) : null;
+  // Active speaker speech bubble coordinates
+  const speakingSeat = layout.seats.find((s) => s.id === currentSpeakerId);
+  const bubbleAnchor = speakingSeat
+    ? computeSpeechBubbleAnchor(speakingSeat, center, 640)
+    : null;
 
   return (
-    <div className={`w-full flex flex-col items-center select-none ${className}`}>
-      {/* View Switcher Header */}
-      <div className="w-full flex items-center justify-between mb-4">
+    <div
+      ref={stageRef}
+      onKeyDown={handleKeyDown}
+      className={cn("flex flex-col items-center select-none w-full", className)}
+    >
+      {/* Stage Header Controls (List View & Interaction Map) */}
+      <div className="w-full flex items-center justify-between px-2 mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-            Deliberation Chamber
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+            The Council Chamber
           </span>
-          <Badge variant="neutral" size="xs">
-            9 Members
-          </Badge>
+          {status === "running" && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--status-low)]/10 text-[var(--status-low)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--status-low)] animate-pulse" />
+              Deliberating
+            </span>
+          )}
         </div>
 
-        {/* View Mode Toggle Button */}
-        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10">
+        <div className="flex items-center gap-1">
+          {status === "completed" && interactionMap.length > 0 && (
+            <button
+              onClick={() => setShowInteractionMap(!showInteractionMap)}
+              className={cn(
+                "p-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors",
+                showInteractionMap
+                  ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+                  : "bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              )}
+              title="Toggle interaction network map"
+              aria-label="Toggle interaction network map"
+            >
+              <Network size={14} />
+              <span className="hidden sm:inline text-[11px] font-medium">Network</span>
+            </button>
+          )}
+
           <button
-            type="button"
-            onClick={() => setViewMode('round')}
-            aria-label="Circular Round Table view"
-            aria-pressed={viewMode === 'round'}
-            className={`p-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all ${
-              viewMode === 'round'
-                ? 'bg-white dark:bg-zinc-800 text-gray-900 dark:text-white shadow-xs'
-                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-            }`}
+            onClick={() => setViewMode(viewMode === "round" ? "list" : "round")}
+            className="p-1.5 rounded-lg text-xs flex items-center gap-1.5 bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            title="Toggle between circular table and accessible list view"
+            aria-label="Toggle list view"
           >
-            <CircleDot className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Chamber</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            aria-label="Accessible Grid List view"
-            aria-pressed={viewMode === 'list'}
-            className={`p-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all ${
-              viewMode === 'list'
-                ? 'bg-white dark:bg-zinc-800 text-gray-900 dark:text-white shadow-xs'
-                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">List</span>
+            {viewMode === "round" ? <List size={14} /> : <CircleDot size={14} />}
+            <span className="hidden sm:inline text-[11px] font-medium">
+              {viewMode === "round" ? "List View" : "Table View"}
+            </span>
           </button>
         </div>
       </div>
 
-      {/* Main View Area */}
-      {viewMode === 'round' ? (
+      {viewMode === "round" ? (
+        /* ── CIRCULAR ROUND TABLE STAGE (640x640 Vector Layout) ── */
         <div
-          ref={tableRef}
-          tabIndex={0}
-          onKeyDown={handleKeyDown}
           role="region"
-          aria-label="Circular Round Table deliberation diagram. Use arrow keys to navigate between seats, and Enter to view persona details."
-          className="relative w-full max-w-[580px] aspect-square flex items-center justify-center rounded-full glass-panel-subtle p-6 overflow-visible outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          aria-label="The Council Round Table"
+          className="relative w-full max-w-[640px] aspect-square flex items-center justify-center overflow-visible"
         >
-          {/* Subtle Chamber Inner Ring */}
-          <div
-            className="absolute rounded-full border border-black/5 dark:border-white/10 pointer-events-none"
-            style={{
-              width: `${layout.radius * 2}px`,
-              height: `${layout.radius * 2}px`,
-            }}
-          />
-
-          {/* Table Background Radial Wash */}
-          <div
-            className="absolute rounded-full pointer-events-none opacity-40"
-            style={{
-              width: `${layout.radius * 1.5}px`,
-              height: `${layout.radius * 1.5}px`,
-              background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)',
-            }}
-          />
-
-          {/* SVG Overlay for Interaction Arcs */}
+          {/* Base SVG Canvas: Table Surface, Rim, Ticks, Spotlight & Arcs */}
           <svg
-            className="absolute inset-0 pointer-events-none"
-            width={layout.width}
-            height={layout.height}
-            viewBox={`0 0 ${layout.width} ${layout.height}`}
+            className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
+            viewBox="0 0 640 640"
           >
-            {sourceCoords && targetCoords && activeInteraction && (
-              <InteractionArc
-                source={sourceCoords}
-                target={targetCoords}
-                center={{ x: layout.centerX, y: layout.centerY }}
-                stance={activeInteraction.stance}
-                speakerColor={speakerColor}
-                isActive={true}
+            <defs>
+              {/* Tonal Table Disc Radial Gradient */}
+              <radialGradient id="tableSurfaceGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="var(--bg-secondary)" />
+                <stop offset="100%" stopColor="var(--bg-tertiary)" />
+              </radialGradient>
+
+              {/* Active Speaker Spotlight Gradient */}
+              {speakingSeat && (
+                <radialGradient
+                  id="speakerSpotlight"
+                  cx={`${(speakingSeat.x / 640) * 100}%`}
+                  cy={`${(speakingSeat.y / 640) * 100}%`}
+                  r="60%"
+                >
+                  <stop
+                    offset="0%"
+                    stopColor={speakingSeat.color || "#6366F1"}
+                    stopOpacity="0.08"
+                  />
+                  <stop offset="100%" stopColor="transparent" stopOpacity="0" />
+                </radialGradient>
+              )}
+            </defs>
+
+            {/* Table Surface Disc */}
+            <circle
+              cx={center.x}
+              cy={center.y}
+              r={tableDiscRadius}
+              fill="url(#tableSurfaceGrad)"
+            />
+
+            {/* Inner Rim (1px edge at 6% opacity) */}
+            <circle
+              cx={center.x}
+              cy={center.y}
+              r={tableDiscRadius}
+              fill="none"
+              stroke="var(--border-subtle)"
+              strokeWidth={1}
+            />
+
+            {/* Faint Concentric Inner Ring at 0.40 R */}
+            <circle
+              cx={center.x}
+              cy={center.y}
+              r={tableDiscRadius * 0.4}
+              fill="none"
+              stroke="var(--border-subtle)"
+              strokeWidth={1}
+              strokeDasharray="4 6"
+            />
+
+            {/* Speaker Spotlight */}
+            {speakingSeat && (
+              <circle
+                cx={center.x}
+                cy={center.y}
+                r={tableDiscRadius}
+                fill="url(#speakerSpotlight)"
               />
             )}
+
+            {/* 9 Seat Angle Tick Marks on the Table Rim */}
+            {layout.seats.map((seat) => {
+              const tickInner = tableDiscRadius - 5;
+              const tickOuter = tableDiscRadius;
+              const x1 = center.x + tickInner * Math.cos(seat.angleRad);
+              const y1 = center.y + tickInner * Math.sin(seat.angleRad);
+              const x2 = center.x + tickOuter * Math.cos(seat.angleRad);
+              const y2 = center.y + tickOuter * Math.sin(seat.angleRad);
+
+              return (
+                <line
+                  key={`tick-${seat.id}`}
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke="var(--text-muted)"
+                  strokeWidth={1.5}
+                  strokeOpacity={0.4}
+                />
+              );
+            })}
+
+            {/* Live Dialogue Arcs with Fading Trail */}
+            {!showInteractionMap &&
+              arcTrail.map((entry, idx) => {
+                const s = layout.seats.find((st) => st.id === entry.sourceId);
+                const t = layout.seats.find((st) => st.id === entry.targetId);
+                if (!s || !t) return null;
+
+                const opacity = idx === 0 ? 1.0 : idx === 1 ? 0.6 : 0.3;
+                return (
+                  <InteractionArc
+                    key={`arc-trail-${entry.timestamp}-${idx}`}
+                    source={{ x: s.x, y: s.y }}
+                    target={{ x: t.x, y: t.y }}
+                    center={center}
+                    stance={entry.stance}
+                    speakerColor={s.color}
+                    opacity={opacity}
+                    isActive={idx === 0}
+                  />
+                );
+              })}
+
+            {/* Aggregated Interaction Network Map Overlay */}
+            {showInteractionMap &&
+              interactionMap.map((pair, pIdx) => {
+                const s = layout.seats.find((st) => st.id === pair.speakerId);
+                const t = layout.seats.find((st) => st.id === pair.targetId);
+                if (!s || !t) return null;
+
+                return (
+                  <InteractionArc
+                    key={`map-pair-${pIdx}`}
+                    source={{ x: s.x, y: s.y }}
+                    target={{ x: t.x, y: t.y }}
+                    center={center}
+                    stance={pair.challengeCount > pair.agreeCount ? "CHALLENGE" : "AGREE"}
+                    speakerColor={s.color}
+                    opacity={Math.min(1.0, 0.4 + pair.count * 0.15)}
+                    isActive={false}
+                  />
+                );
+              })}
           </svg>
 
-          {/* Center Medallion: VerdictSeal */}
-          <div className="absolute z-10">
+          {/* Center Medallion (Convergence Ring / Verdict Seal) */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
             <VerdictSeal
               phase={phase}
+              roundNumber={roundNumber}
+              maxRounds={maxRounds}
               convergenceScore={convergenceScore}
               isUnanimous={isUnanimous}
               status={status}
+              ratificationVotes={
+                ratificationVotes as Record<string, "sign_off" | "amendment" | "dissent">
+              }
               onViewVerdict={onViewVerdict}
-              size={144}
             />
           </div>
 
-          {/* 9 Seated Members (Moderator at 12 o'clock, 8 clockwise) */}
+          {/* HTML Seated Nodes */}
           {layout.seats.map((seat, index) => {
-            const profile = findPersonaById(seat.id);
-            if (!profile) return null;
-            const data = getPersonaData(profile.id);
-            const isSpeaking = currentSpeakerId === profile.id;
-            const isSelected = selectedPersona?.id === profile.id;
+            const persona = findPersonaById(seat.id as PersonaId) || {
+              id: seat.id as PersonaId,
+              name: seat.name,
+              title: seat.role,
+              role: seat.role,
+              archetype: seat.role,
+              coreValues: [],
+              avatarGlyph: "Crown",
+              colorHex: seat.color || "#3B82F6",
+            };
+
+            const state = seatStates[seat.id as PersonaId];
+            const isSpeaking = currentSpeakerId === seat.id;
+            const vote = ratificationVotes[seat.id as PersonaId];
 
             return (
               <SeatNode
                 key={seat.id}
-                persona={profile}
+                persona={persona as PersonaProfile}
                 x={seat.x}
                 y={seat.y}
-                seatRadius={layout.seatRadius}
+                angleDeg={seat.angleDeg}
                 isModerator={seat.isModerator}
                 isSpeaking={isSpeaking}
-                isUnavailable={data.isUnavailable}
-                confidence={data.confidence}
-                confidenceDelta={data.confidenceDelta}
-                vote={data.vote}
-                isSelected={isSelected}
+                isUnavailable={state?.status === "unavailable"}
+                confidence={state?.confidence ?? null}
+                confidenceDelta={state?.delta}
+                vote={vote}
+                isSelected={selectedPersona?.id === seat.id}
                 focused={focusedSeatIndex === index}
-                onClick={() => handleSeatClick(profile)}
+                tabIndex={focusedSeatIndex === index ? 0 : -1}
+                onClick={() => {
+                  setSelectedPersona(persona as PersonaProfile);
+                  onSelectPersona?.(persona as PersonaProfile);
+                }}
                 onFocus={() => setFocusedSeatIndex(index)}
               />
             );
           })}
-        </div>
-      ) : (
-        /* Accessible List View */
-        <div className="w-full space-y-3">
-          {/* Moderator row */}
-          <GlassCard
-            onClick={() => handleSeatClick(MODERATOR)}
-            role="button"
-            tabIndex={0}
-            interactive
-            padded="sm"
-            className="flex items-center justify-between cursor-pointer"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-slate-500/15 text-slate-600 dark:text-slate-400 flex items-center justify-center font-bold">
-                M
-              </div>
-              <div>
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                  {MODERATOR.name}
-                </span>
-                <p className="text-xs text-gray-500">{MODERATOR.title}</p>
+
+          {/* Speaking Speech Bubble (Center-facing with 3-line clamp) */}
+          {speakingSeat && bubbleAnchor && lastSpeakerSnippet && (
+            <div
+              style={{
+                left: `${bubbleAnchor.x}px`,
+                top: `${bubbleAnchor.y}px`,
+              }}
+              className="absolute -translate-x-1/2 -translate-y-1/2 z-30 max-w-[240px] pointer-events-auto animate-spring-scale"
+            >
+              <div className="p-3 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] shadow-none">
+                <div className="flex items-center justify-between mb-1 text-[10px] font-mono text-[var(--text-muted)]">
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    {speakingSeat.name}
+                  </span>
+                  <span>speaking</span>
+                </div>
+                <p className="line-clamp-3 leading-relaxed text-[var(--text-secondary)]">
+                  {lastSpeakerSnippet}
+                </p>
+                <button
+                  onClick={() => {
+                    const p = findPersonaById(speakingSeat.id as PersonaId);
+                    if (p) setSelectedPersona(p);
+                  }}
+                  className="mt-1 text-[10px] font-medium text-[var(--accent)] hover:underline"
+                >
+                  Open statement →
+                </button>
               </div>
             </div>
-            <Badge variant="neutral" size="xs">
-              Chair (Non-Voting)
-            </Badge>
-          </GlassCard>
+          )}
+        </div>
+      ) : (
+        /* ── ACCESSIBLE LIST VIEW TOGGLE (Alternative Deck) ── */
+        <div
+          role="region"
+          aria-label="The Council Seating List View"
+          className="w-full max-w-xl flex flex-col gap-2 p-2"
+        >
+          {layout.seats.map((seat) => {
+            const persona = findPersonaById(seat.id as PersonaId);
+            const state = seatStates[seat.id as PersonaId];
+            const isSpeaking = currentSpeakerId === seat.id;
 
-          {/* 8 Voting Members Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {COUNCIL_MEMBERS.map((member) => {
-              const data = getPersonaData(member.id);
-              const isSpeaking = currentSpeakerId === member.id;
-
-              return (
-                <GlassCard
-                  key={member.id}
-                  onClick={() => handleSeatClick(member)}
-                  role="button"
-                  tabIndex={0}
-                  interactive={!data.isUnavailable}
-                  padded="sm"
-                  className={`cursor-pointer ${
-                    isSpeaking ? 'ring-2 ring-indigo-500/50' : ''
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold" style={{ color: member.colorHex }}>
-                      {member.name}
-                    </span>
-                    {data.confidence !== null && (
-                      <span className="text-xs font-mono font-semibold">
-                        {data.confidence}%
-                      </span>
-                    )}
+            return (
+              <div
+                key={seat.id}
+                onClick={() => persona && setSelectedPersona(persona)}
+                className={cn(
+                  "p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] flex items-center justify-between cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors",
+                  isSpeaking && "ring-2 ring-[var(--accent)]"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
+                    style={{
+                      backgroundColor: `${seat.color || "#3B82F6"}20`,
+                      color: seat.color || "#3B82F6",
+                    }}
+                  >
+                    {seat.isModerator ? "M" : seat.name.charAt(0)}
                   </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 italic">
-                    {data.opening?.positionSummary || 'Awaiting position...'}
-                  </p>
-                </GlassCard>
-              );
-            })}
-          </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-[var(--text-primary)]">
+                      {seat.name}
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-muted)]">{seat.role}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {state && !seat.isModerator && (
+                    <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
+                      {state.confidence}%
+                    </span>
+                  )}
+                  {isSpeaking && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--status-low)]/10 text-[var(--status-low)]">
+                      Speaking
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Replay Scrubber Control (Optional) */}
-      {totalReplaySteps !== undefined && totalReplaySteps > 1 && onReplayStepChange && (
-        <div className="w-full max-w-xl mt-6">
+      {/* Docked Replay Scrubber Pill (Section 6) */}
+      {totalReplaySteps && totalReplaySteps > 1 && replayStep !== undefined && onReplayStepChange && (
+        <div className="mt-4">
           <ReplayScrubber
             totalSteps={totalReplaySteps}
-            currentStep={replayStep ?? 0}
+            currentStep={replayStep}
             onStepChange={onReplayStepChange}
           />
         </div>
       )}
 
-      {/* Persona Detail Slide-out Drawer */}
+      {/* Persona Drawer Modal */}
       <PersonaDrawer
         persona={selectedPersona}
-        isOpen={Boolean(selectedPersona)}
+        isOpen={!!selectedPersona}
         onClose={() => setSelectedPersona(null)}
-        confidence={selectedData?.confidence ?? null}
-        openingPosition={selectedData?.opening}
-        vote={selectedData?.vote}
-        statements={selectedData?.statements}
+        confidence={
+          selectedPersona && selectedPersona.id !== "moderator"
+            ? trajectories[selectedPersona.id]?.finalConfidence ?? null
+            : null
+        }
+        confidenceDelta={
+          selectedPersona && selectedPersona.id !== "moderator"
+            ? trajectories[selectedPersona.id]?.delta
+            : undefined
+        }
+        trajectoryPoints={
+          selectedPersona && selectedPersona.id !== "moderator"
+            ? trajectories[selectedPersona.id]?.points
+            : []
+        }
+        openingPosition={
+          selectedPersona ? openingPositions[selectedPersona.id] : undefined
+        }
+        vote={selectedPersona ? ratificationVotes[selectedPersona.id] : undefined}
       />
     </div>
   );

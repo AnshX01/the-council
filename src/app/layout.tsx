@@ -1,14 +1,23 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import { Navbar } from '@/components/Navbar';
-import { ToastProvider } from '@/components/ui/Toast';
-import { CommandPalette } from '@/components/layout/CommandPalette';
+import { AppShell } from '@/components/layout/AppShell';
+import { OnboardingWizard } from '@/components/layout/OnboardingWizard';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { ToastProvider } from '@/components/ui/Toast';
 
 const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-inter',
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-sans',
+  display: 'swap',
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-mono',
   display: 'swap',
 });
 
@@ -27,32 +36,36 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`dark ${inter.variable}`} suppressHydrationWarning>
-      <body className="min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500/30 selection:text-indigo-900 dark:selection:text-indigo-200 relative">
-        {/* Soft Ambient Background Mesh Behind Glass Surfaces */}
-        <div className="ambient-background" aria-hidden="true">
-          <div className="ambient-orb-1" />
-          <div className="ambient-orb-2" />
-          <div className="ambient-orb-3" />
-        </div>
-
-        <OfflineBanner />
-
-        <ToastProvider>
-          <CommandPalette />
-          <div className="relative z-10 flex flex-col min-h-screen">
-            <Navbar />
-            <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-              {children}
-            </main>
-            <footer className="w-full border-t border-gray-200/50 dark:border-white/10 py-6 text-center text-xs text-gray-500 dark:text-gray-400 glass-panel-subtle !rounded-none !border-x-0 !border-b-0 backdrop-blur-md">
-              <p>
-                The Council &bull; Built with Google Gemini API (`@google/genai`) &bull; Strict
-                Honesty Rule Deliberation Protocol
-              </p>
-            </footer>
-          </div>
-        </ToastProvider>
+    <html
+      lang="en"
+      className={`dark ${inter.variable} ${jetBrainsMono.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const t = localStorage.getItem('the_council_theme');
+                if (t === 'light') {
+                  document.documentElement.classList.remove('dark');
+                } else {
+                  document.documentElement.classList.add('dark');
+                }
+              } catch (_) {}
+            `,
+          }}
+        />
+      </head>
+      <body className="antialiased h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans">
+        <ErrorBoundary>
+          <OfflineBanner />
+          <ToastProvider>
+            <OnboardingWizard>
+              <AppShell>{children}</AppShell>
+            </OnboardingWizard>
+          </ToastProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

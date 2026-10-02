@@ -1,6 +1,13 @@
-'use client';
+/**
+ * Origin: The Council Round Table v3 (Section 6)
+ * Persona Detail Drawer (Radix dialog / bottom sheet on mobile) displaying
+ * archetype, core values, blind spots, message history, and confidence sparkline.
+ */
 
-import React, { useEffect, useRef } from 'react';
+"use client";
+
+import React from "react";
+import * as RadixDialog from "@radix-ui/react-dialog";
 import {
   X,
   Compass,
@@ -14,22 +21,20 @@ import {
   Crown,
   Shield,
   EyeOff,
-  Activity,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-} from 'lucide-react';
-import { PersonaProfile } from '@/types/persona';
-import { OpeningPosition, RatificationVote } from '@/types/session';
-import { Badge } from '@/components/ui/Badge';
+} from "lucide-react";
+import { PersonaProfile } from "@/types/persona";
+import { OpeningPosition, RatificationVote } from "@/types/session";
+import { cn } from "@/lib/utils";
 
 export interface PersonaDrawerProps {
   persona: PersonaProfile | null;
   isOpen: boolean;
   onClose: () => void;
   confidence: number | null;
+  confidenceDelta?: number;
+  trajectoryPoints?: Array<{ round: number; confidence: number }>;
   openingPosition?: OpeningPosition;
-  vote?: RatificationVote;
+  vote?: RatificationVote | 'sign_off' | 'amendment' | 'dissent';
   statements?: Array<{
     phase: string;
     round?: number;
@@ -56,214 +61,172 @@ export const PersonaDrawer: React.FC<PersonaDrawerProps> = ({
   isOpen,
   onClose,
   confidence,
+  confidenceDelta,
+  trajectoryPoints = [],
   openingPosition,
   vote,
   statements = [],
 }) => {
-  const drawerRef = useRef<HTMLDivElement>(null);
+  if (!persona) return null;
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen || !persona) return null;
-
-  const GlyphComponent = GLYPH_MAP[persona.avatarGlyph] || Shield;
-  const isModerator = persona.id === 'moderator' || persona.seatNumber === 0;
+  const GlyphComponent = GLYPH_MAP[persona.avatarGlyph] || Crown;
+  const color = persona.colorHex || "#6366F1";
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in">
-      {/* Backdrop tap to close */}
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
-
-      {/* Slide-out Panel */}
-      <div
-        ref={drawerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="drawer-title"
-        className="relative z-10 w-full max-w-md h-full glass-panel-elevated shadow-2xl flex flex-col overflow-hidden border-l border-white/10 dark:border-white/10 animate-slide-left"
-        style={{
-          borderRadius: 0,
-        }}
-      >
-        {/* Header with Persona Accent */}
-        <div
-          className="p-5 border-b border-black/5 dark:border-white/10 flex items-start justify-between relative"
-          style={{
-            background: `linear-gradient(135deg, ${persona.colorHex}15 0%, transparent 100%)`,
-          }}
+    <RadixDialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <RadixDialog.Portal>
+        <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm animate-fade-in" />
+        <RadixDialog.Content
+          className={cn(
+            "fixed right-0 top-0 bottom-0 z-50 w-full max-w-md",
+            "bg-[var(--bg-secondary)] border-l border-[var(--border-subtle)]",
+            "p-6 flex flex-col gap-6 overflow-y-auto animate-spring-slide-right outline-none"
+          )}
         >
-          <div className="flex items-center gap-3">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center shadow-xs shrink-0"
-              style={{
-                backgroundColor: `${persona.colorHex}20`,
-                color: persona.colorHex,
-                border: `1.5px solid ${persona.colorHex}50`,
-              }}
-            >
-              <GlyphComponent className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 id="drawer-title" className="text-base font-bold text-gray-900 dark:text-gray-50">
-                  {persona.name}
-                </h3>
-                <Badge variant="neutral" size="xs">
-                  {isModerator ? 'Moderator' : `Seat ${persona.seatNumber}`}
-                </Badge>
+          {/* Header with Glyph, Name, Role */}
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center bg-[var(--bg-tertiary)] flex-shrink-0"
+                style={{ color }}
+              >
+                <GlyphComponent size={24} />
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {persona.title}
-              </p>
+              <div className="flex flex-col">
+                <RadixDialog.Title className="text-base font-bold text-[var(--text-primary)]">
+                  {persona.name}
+                </RadixDialog.Title>
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {persona.archetype || persona.title}
+                </span>
+              </div>
             </div>
+            <RadixDialog.Close asChild>
+              <button
+                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                aria-label="Close modal"
+              >
+                <X size={18} />
+              </button>
+            </RadixDialog.Close>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close drawer"
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
-          {/* Status & Confidence Meter */}
-          {!isModerator && (
-            <div className="glass-panel-subtle p-3.5 rounded-xl flex items-center justify-between">
-              <div>
-                <span className="text-[10px] uppercase font-mono tracking-wider text-gray-400">
+          {/* Current Confidence & Sparkline */}
+          {confidence !== null && (
+            <div className="p-4 rounded-xl bg-[var(--bg-tertiary)] flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
                   Current Confidence
                 </span>
-                <div className="text-xl font-mono font-bold text-gray-900 dark:text-gray-100">
-                  {confidence !== null ? `${confidence}%` : 'N/A'}
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-2xl font-bold font-mono text-[var(--text-primary)]">
+                    {confidence}%
+                  </span>
+                  {confidenceDelta !== undefined && confidenceDelta !== 0 && (
+                    <span
+                      className={cn(
+                        "text-xs font-mono font-semibold",
+                        confidenceDelta > 0 ? "text-[var(--status-low)]" : "text-[var(--status-urgent)]"
+                      )}
+                    >
+                      {confidenceDelta > 0 ? `+${confidenceDelta}%` : `${confidenceDelta}%`}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {vote && (
-                <div className="text-right">
-                  <span className="text-[10px] uppercase font-mono tracking-wider text-gray-400 block mb-1">
-                    Ratification Vote
-                  </span>
-                  {vote.vote === 'SIGN_OFF' ? (
-                    <Badge variant="success" size="sm" icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
-                      Signed Off
-                    </Badge>
-                  ) : vote.vote === 'SIGN_OFF_WITH_AMENDMENT' ? (
-                    <Badge variant="warning" size="sm" icon={<AlertTriangle className="w-3.5 h-3.5" />}>
-                      With Amendment
-                    </Badge>
-                  ) : (
-                    <Badge variant="danger" size="sm" icon={<XCircle className="w-3.5 h-3.5" />}>
-                      Dissenting
-                    </Badge>
-                  )}
+              {/* Sparkline */}
+              {trajectoryPoints.length > 1 && (
+                <div className="w-24 h-8 flex items-end gap-1">
+                  {trajectoryPoints.map((pt, i) => (
+                    <div
+                      key={i}
+                      className="flex-1 bg-[var(--accent)] rounded-t transition-all"
+                      style={{ height: `${Math.max(15, (pt.confidence / 100) * 32)}px` }}
+                      title={`Round ${pt.round}: ${pt.confidence}%`}
+                    />
+                  ))}
                 </div>
               )}
             </div>
           )}
 
-          {/* Core Lens & Reasoning Style */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-900 dark:text-gray-100">
-              <Compass className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Epistemic Lens & Reasoning</span>
-            </div>
-            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed bg-black/2 dark:bg-white/2 p-3 rounded-lg border border-black/5 dark:border-white/5">
-              {persona.reasoningStyle}
+          {/* Lens & Philosophical Foundation */}
+          <div className="flex flex-col gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] flex items-center gap-1.5">
+              <Shield size={12} /> Core Values & Reasoning Style
+            </span>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed bg-[var(--bg-tertiary)] p-3 rounded-xl">
+              {(persona as any).perspectivePrompt ||
+                [persona.coreValues?.join(" • "), persona.reasoningStyle].filter(Boolean).join(" — ") ||
+                "Committed to rigorous dialectical inquiry."}
             </p>
           </div>
 
           {/* Blind Spots */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
-              <EyeOff className="w-3.5 h-3.5" />
-              <span>Known Cognitive Blind Spots</span>
-            </div>
-            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed bg-amber-500/5 dark:bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">
-              {persona.blindSpots}
-            </p>
-          </div>
-
-          {/* Core Values */}
-          {persona.coreValues && persona.coreValues.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 block">
-                Guiding Axioms & Values
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {persona.coreValues.map((val, idx) => (
-                  <Badge key={idx} variant="neutral" size="xs">
-                    {val}
-                  </Badge>
-                ))}
+          {persona.blindSpots && (() => {
+            const spots: string[] = Array.isArray(persona.blindSpots)
+              ? (persona.blindSpots as unknown as string[])
+              : typeof persona.blindSpots === "string"
+              ? persona.blindSpots.split("\n").map((s) => s.replace(/^[•\-\*]\s*/, "").trim()).filter(Boolean)
+              : [];
+            if (spots.length === 0) return null;
+            return (
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] flex items-center gap-1.5">
+                  <EyeOff size={12} /> Acknowledged Blind Spots
+                </span>
+                <ul className="text-xs text-[var(--text-secondary)] flex flex-col gap-1.5 bg-[var(--bg-tertiary)] p-3 rounded-xl">
+                  {spots.map((spot, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-[var(--status-medium)] font-bold">•</span>
+                      <span>{spot}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
-          {/* Opening Position Snippet */}
+          {/* Opening Position Summary */}
           {openingPosition && (
-            <div className="space-y-2">
-              <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 block">
-                Opening Thesis
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                Opening Position
               </span>
-              <div className="p-3 rounded-lg bg-black/2 dark:bg-white/2 border border-black/5 dark:border-white/5 text-xs text-gray-700 dark:text-gray-300 italic leading-relaxed">
-                &ldquo;{openingPosition.positionSummary}&rdquo;
+              <div className="p-3 rounded-xl bg-[var(--bg-tertiary)] text-xs text-[var(--text-secondary)] leading-relaxed">
+                <p className="font-medium text-[var(--text-primary)] mb-1">
+                  &ldquo;{openingPosition.positionSummary || (openingPosition as any).stance}&rdquo;
+                </p>
+                <p>{openingPosition.detailedReasoning || (openingPosition as any).reasoning}</p>
               </div>
             </div>
           )}
 
-          {/* Deliberation Contributions Log */}
+          {/* Message History */}
           {statements.length > 0 && (
-            <div className="space-y-2.5">
-              <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 block">
-                Statements & Interventions ({statements.length})
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                Deliberation Contributions ({statements.length})
               </span>
-              <div className="space-y-2">
-                {statements.map((stmt, i) => (
+              <div className="flex flex-col gap-2">
+                {statements.map((stmt, idx) => (
                   <div
-                    key={i}
-                    className="p-3 rounded-lg border border-black/5 dark:border-white/5 text-xs space-y-1.5"
+                    key={idx}
+                    className="p-3 rounded-xl bg-[var(--bg-tertiary)] text-xs text-[var(--text-secondary)] leading-relaxed"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono uppercase text-gray-400">
-                        {stmt.phase} {stmt.round ? `Round ${stmt.round}` : ''}
-                      </span>
-                      {stmt.stance && (
-                        <Badge
-                          variant={
-                            stmt.stance === 'AGREE'
-                              ? 'success'
-                              : stmt.stance === 'CHALLENGE'
-                              ? 'danger'
-                              : 'warning'
-                          }
-                          size="xs"
-                        >
-                          {stmt.stance}
-                        </Badge>
-                      )}
+                    <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-muted)] mb-1">
+                      <span>{stmt.phase}</span>
+                      {stmt.confidence && <span>{stmt.confidence}%</span>}
                     </div>
-                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-                      {stmt.text}
-                    </p>
+                    <p>{stmt.text}</p>
                   </div>
                 ))}
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </RadixDialog.Content>
+      </RadixDialog.Portal>
+    </RadixDialog.Root>
   );
 };

@@ -1,391 +1,622 @@
-'use client';
+/**
+ * Origin: AnshX01/Atlas (frontend/src/app/settings/page.tsx)
+ * The Council - Chamber Settings & Controls
+ * Flat, borderless, monochrome, Inter-spaced, left sub-navigation layout.
+ * Eliminates client localStorage API key leaks (Bug B2) and uses server truth (B3/B4).
+ */
 
-import React, { useState, useEffect } from 'react';
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import {
-  Settings as SettingsIcon,
-  KeyRound,
-  DollarSign,
   Cpu,
-  Shield,
-  CheckCircle2,
-  AlertTriangle,
+  DollarSign,
+  Sun,
+  Moon,
   Database,
-  Trash2,
-  RefreshCw,
-  Save,
-  Loader2,
-} from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { useToast } from '@/components/ui/Toast';
+  Keyboard,
+  Info,
+  CheckCircle2,
+  AlertCircle,
+  ShieldCheck,
+  ChevronRight,
+  ExternalLink,
+  Sparkles,
+} from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
+import { Toggle } from "@/components/ui/Toggle";
+import { Slider } from "@/components/ui/Slider";
+import { toast } from "@/components/ui/Toast";
+import { useSettings, useEngineStatus } from "@/lib/ui/hooks";
+import { cn } from "@/lib/utils";
+
+type SettingsSection = "engine" | "budget" | "appearance" | "data" | "shortcuts" | "about";
+
+interface SectionItem {
+  id: SettingsSection;
+  label: string;
+  icon: React.ReactNode;
+}
+
+const SECTIONS: SectionItem[] = [
+  { id: "engine", label: "Engine & Models", icon: <Cpu size={15} /> },
+  { id: "budget", label: "Budget & Limits", icon: <DollarSign size={15} /> },
+  { id: "appearance", label: "Appearance", icon: <Sun size={15} /> },
+  { id: "data", label: "Data & Storage", icon: <Database size={15} /> },
+  { id: "shortcuts", label: "Shortcuts", icon: <Keyboard size={15} /> },
+  { id: "about", label: "About", icon: <Info size={15} /> },
+];
+
+function SettingRow({
+  label,
+  description,
+  children,
+  className,
+}: {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex items-start justify-between gap-4 py-4 border-b border-[var(--border-subtle)] last:border-0", className)}>
+      <div className="flex-1 pr-2">
+        <p className="text-sm font-medium text-[var(--text-primary)]">{label}</p>
+        {description && (
+          <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+            {description}
+          </p>
+        )}
+      </div>
+      <div className="flex-shrink-0">{children}</div>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
-  const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('gemini-2.5-flash');
-  const [mockMode, setMockMode] = useState(false);
-  const [spendCapCents, setSpendCapCents] = useState(1000); // $10.00
-  const [concurrency, setConcurrency] = useState(4);
-  const [callBudget, setCallBudget] = useState(80);
+  const [activeSection, setActiveSection] = useState<SettingsSection>("engine");
+  const { settings, updateSettings, testKey } = useSettings();
+  const engineStatus = useEngineStatus();
 
-  // Usage stats from API
+  const [mounted, setMounted] = useState(false);
+  const [testProbeKey, setTestProbeKey] = useState("");
+  const [testingKey, setTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ valid: boolean; message: string } | null>(null);
+
+  // Usage statistics from server
   const [usage, setUsage] = useState<{
-    totalCostCents: number;
-    spendCapCents: number;
-    headroomCents: number;
-    totalTokens: number;
-    callCount: number;
+    monthlySpendUSD: number;
+    monthlySpendCapUSD: number;
+    remainingHeadroomUSD: number;
+    utilizationPercent: number;
+    totalCalls: number;
+    totalPromptTokens: number;
+    totalCandidateTokens: number;
   }>({
-    totalCostCents: 0,
-    spendCapCents: 1000,
-    headroomCents: 1000,
-    totalTokens: 0,
-    callCount: 0,
+    monthlySpendUSD: 0,
+    monthlySpendCapUSD: 20,
+    remainingHeadroomUSD: 20,
+    utilizationPercent: 0,
+    totalCalls: 0,
+    totalPromptTokens: 0,
+    totalCandidateTokens: 0,
   });
 
-  const [testingKey, setTestingKey] = useState(false);
-  const [keyResult, setKeyResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const { toast } = useToast();
-
   useEffect(() => {
-    // 1. Load local preferences
-    if (typeof window !== 'undefined') {
-      const storedKey = localStorage.getItem('the_council_gemini_api_key') || '';
-      const storedModel = localStorage.getItem('the_council_gemini_model') || 'gemini-2.5-flash';
-      const storedMock = localStorage.getItem('the_council_mock_mode') === 'true';
-      setApiKey(storedKey);
-      setModel(storedModel);
-      setMockMode(storedMock);
-    }
-
-    // 2. Fetch server settings and usage
-    fetch('/api/v1/settings')
+    setMounted(true);
+    fetch("/api/v1/usage")
       .then((r) => r.json())
       .then((d) => {
-        if (d.ok && d.data) {
-          if (d.data.model) setModel(d.data.model);
-          if (d.data.mockMode !== undefined) setMockMode(d.data.mockMode);
-          if (d.data.spendCapCents) setSpendCapCents(d.data.spendCapCents);
-          if (d.data.concurrencyLimit) setConcurrency(d.data.concurrencyLimit);
-          if (d.data.callBudget) setCallBudget(d.data.callBudget);
-        }
-      })
-      .catch(() => {});
-
-    fetch('/api/v1/usage')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.ok && d.data) {
-          const u = d.data.usage || d.data;
-          setUsage({
-            totalCostCents: Math.round((u.monthlySpendUSD ?? 0) * 100),
-            spendCapCents: Math.round((u.monthlySpendCapUSD ?? 10) * 100),
-            headroomCents: Math.round((u.remainingHeadroomUSD ?? 10) * 100),
-            totalTokens:
-              (u.totalPromptTokens ?? 0) + (u.totalCandidateTokens ?? 0) ||
-              (u.totalTokens ?? 0),
-            callCount: u.totalCalls ?? u.callCount ?? 0,
-          });
+        if (d.ok && d.data?.usage) {
+          setUsage(d.data.usage);
         }
       })
       .catch(() => {});
   }, []);
 
-  const handleTestKey = async () => {
-    if (!apiKey.trim()) {
-      setKeyResult({ success: false, message: 'Please enter a Gemini API Key to test.' });
-      return;
-    }
-
+  const handleTestKeyProbe = async () => {
     setTestingKey(true);
-    setKeyResult(null);
-
+    setTestResult(null);
     try {
-      const res = await fetch('/api/v1/settings/test-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: apiKey.trim(), model }),
+      const res = await testKey(testProbeKey ? testProbeKey.trim() : undefined);
+      setTestResult({
+        valid: res.valid ?? false,
+        message: res.message || (res.valid ? "Key verified successfully." : "Key verification failed."),
       });
-      const data = await res.json();
-
-      if (res.ok && data.ok) {
-        setKeyResult({
-          success: true,
-          message: `Connection successful! Latency: ${data.data?.latencyMs || 0}ms (${data.data?.model || model})`,
-        });
-        localStorage.setItem('the_council_gemini_api_key', apiKey.trim());
+      if (res.valid) {
+        toast.success("Gemini API connection verified");
+        engineStatus.refresh();
       } else {
-        setKeyResult({
-          success: false,
-          message: data.error?.message || 'Key test failed.',
-        });
+        toast.error(res.message || "Verification probe failed");
       }
     } catch (err: any) {
-      setKeyResult({ success: false, message: err.message });
+      setTestResult({ valid: false, message: err.message || "Failed to reach test endpoint." });
+      toast.error("Network error testing key");
     } finally {
       setTestingKey(false);
     }
   };
 
-  const handleSaveSettings = async () => {
-    setIsSaving(true);
-    try {
-      localStorage.setItem('the_council_gemini_api_key', apiKey.trim());
-      localStorage.setItem('the_council_gemini_model', model);
-      localStorage.setItem('the_council_mock_mode', String(mockMode));
+  const isDark = mounted ? document.documentElement.classList.contains("dark") : true;
 
-      const res = await fetch('/api/v1/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          mockMode,
-          spendCapCents,
-          concurrencyLimit: concurrency,
-          callBudget,
-        }),
-      });
-
-      if (res.ok) {
-        toast({
-          type: 'success',
-          title: 'Settings Saved',
-          description: 'Chamber preferences and spend budget updated.',
-        });
-      }
-    } catch (err: any) {
-      toast({ type: 'error', title: 'Save Failed', description: err.message });
-    } finally {
-      setIsSaving(false);
+  const toggleTheme = () => {
+    const next = isDark ? "light" : "dark";
+    if (next === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
     }
+    updateSettings({ theme: next });
+    toast.info(`Theme set to ${next} mode`);
   };
 
-  const spendPercent = Math.min(
-    100,
-    Math.round((usage.totalCostCents / (spendCapCents || 1000)) * 100)
-  );
-
   return (
-    <div className="space-y-6 animate-fade-in max-w-3xl mx-auto py-2">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-            <SettingsIcon className="w-4 h-4" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-950 dark:text-gray-50">
-              Chamber Settings & Controls
-            </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Configure Google Gemini credentials, budget spend caps, and execution concurrency.
-            </p>
-          </div>
+    <div className="max-w-4xl mx-auto py-2">
+      {/* Page Header */}
+      <motion.div
+        className="mb-8"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-widest uppercase">
+            System Configuration
+          </span>
         </div>
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Settings</h1>
+        <p className="text-sm text-[var(--text-secondary)] mt-1">
+          Configure Gemini engine connectivity, safety limits, visual appearance, and storage parameters.
+        </p>
+      </motion.div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          isLoading={isSaving}
-          onClick={handleSaveSettings}
-          leftIcon={<Save className="w-3.5 h-3.5" />}
+      {/* Main Container: Left Sub-Nav + Right Content Surface */}
+      <div className="flex flex-col md:flex-row gap-6">
+        {/* Left Sub-Nav */}
+        <motion.nav
+          className="flex md:flex-col gap-1 w-full md:w-48 flex-shrink-0 overflow-x-auto md:overflow-visible pb-2 md:pb-0"
+          initial={{ opacity: 0, x: -8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.05 }}
+          aria-label="Settings sections"
         >
-          Save Changes
-        </Button>
-      </div>
+          {SECTIONS.map((sec) => {
+            const active = activeSection === sec.id;
+            return (
+              <button
+                key={sec.id}
+                id={`settings-nav-${sec.id}`}
+                onClick={() => setActiveSection(sec.id)}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-all duration-150 whitespace-nowrap",
+                  active
+                    ? "bg-[var(--bg-tertiary)] text-[var(--text-primary)]"
+                    : "text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-secondary)]"
+                )}
+              >
+                <span className={active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}>
+                  {sec.icon}
+                </span>
+                <span>{sec.label}</span>
+                {active && <ChevronRight size={12} className="ml-auto hidden md:block text-[var(--text-muted)]" />}
+              </button>
+            );
+          })}
+        </motion.nav>
 
-      {/* Spend Cap & Usage Headroom Meter */}
-      <GlassCard padded="md" className="space-y-3 !rounded-2xl">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <DollarSign className="w-4 h-4 text-emerald-500" />
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Personal Spend Budget & Usage Meter
-            </h2>
-          </div>
-          <Badge variant={spendPercent > 85 ? 'warning' : 'success'} size="xs">
-            {spendPercent}% Cap Used
-          </Badge>
-        </div>
+        {/* Right Content Panel */}
+        <motion.div
+          key={activeSection}
+          className="flex-1 rounded-2xl bg-[var(--bg-secondary)] p-6 min-w-0"
+          initial={{ opacity: 0, x: 8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        >
+          {/* SECTION 1: Engine & Models */}
+          {activeSection === "engine" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                  Engine & Reasoning
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Manage provider connectivity, primary dialectic model, and simulation fallbacks.
+                </p>
+              </div>
 
-        {/* Headroom Progress Bar */}
-        <div className="space-y-1.5 pt-1">
-          <div className="w-full h-3 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden p-0.5">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                spendPercent > 90 ? 'bg-rose-500' : spendPercent > 70 ? 'bg-amber-500' : 'bg-emerald-500'
-              }`}
-              style={{ width: `${spendPercent}%` }}
-            />
-          </div>
+              {/* Server Key Status Banner */}
+              <div className="p-4 rounded-xl bg-[var(--bg-tertiary)] flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck size={18} className="text-[var(--text-primary)] mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-[var(--text-primary)]">
+                        Google Gemini Credential
+                      </span>
+                      <Badge
+                        variant={engineStatus.keyConfigured ? "low" : "medium"}
+                        size="sm"
+                      >
+                        {engineStatus.keyConfigured ? "Configured on Server" : "Simulation Mode Active"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
+                      {engineStatus.keyConfigured
+                        ? "API key is loaded strictly in server-side Node.js environment (.env.local). It is never sent to the browser bundle."
+                        : "No server GEMINI_API_KEY detected. The chamber runs with deterministic, zero-cost MockProvider archetypes."}
+                    </p>
+                  </div>
+                </div>
 
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-mono">
-            <span>
-              Spent: ${((usage?.totalCostCents ?? 0) / 100).toFixed(2)}
-            </span>
-            <span>
-              Cap: ${((spendCapCents ?? 1000) / 100).toFixed(2)}
-            </span>
-          </div>
-        </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleTestKeyProbe}
+                  isLoading={testingKey}
+                >
+                  Verify Health
+                </Button>
+              </div>
 
-        <div className="grid grid-cols-2 gap-3 pt-2 text-xs">
-          <div className="p-3 rounded-xl bg-black/2 dark:bg-white/3 border border-black/5 dark:border-white/5">
-            <span className="text-[10px] uppercase font-mono text-gray-400 block">Total Tokens Processed</span>
-            <span className="text-base font-bold font-mono text-gray-900 dark:text-gray-100">
-              {(usage?.totalTokens ?? 0).toLocaleString()}
-            </span>
-          </div>
-          <div className="p-3 rounded-xl bg-black/2 dark:bg-white/3 border border-black/5 dark:border-white/5">
-            <span className="text-[10px] uppercase font-mono text-gray-400 block">LLM Calls Executed</span>
-            <span className="text-base font-bold font-mono text-gray-900 dark:text-gray-100">
-              {(usage?.callCount ?? 0).toLocaleString()}
-            </span>
-          </div>
-        </div>
-      </GlassCard>
+              {/* Ephemeral Key Verification Probe */}
+              <div className="space-y-2 pt-2">
+                <Input
+                  label="Test Alternate Key (Server Verification Only)"
+                  type="password"
+                  placeholder="Paste AIzaSy... to test connectivity without saving to browser"
+                  value={testProbeKey}
+                  onChange={(e) => setTestProbeKey(e.target.value)}
+                  rightElement={
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleTestKeyProbe}
+                      isLoading={testingKey}
+                      disabled={!testProbeKey.trim()}
+                    >
+                      Test
+                    </Button>
+                  }
+                />
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Keys are validated against the server-side health probe and never persisted to browser localStorage.
+                </p>
 
-      {/* API Key & Model Configuration */}
-      <GlassCard padded="md" className="space-y-4 !rounded-2xl">
-        <div className="flex items-center gap-2">
-          <KeyRound className="w-4 h-4 text-indigo-500" />
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Google Gemini Engine Credentials
-          </h2>
-        </div>
+                {testResult && (
+                  <div
+                    className={cn(
+                      "p-3 rounded-xl text-xs flex items-center gap-2.5 mt-2",
+                      testResult.valid
+                        ? "bg-[var(--status-low)]/10 text-[var(--status-low)]"
+                        : "bg-[var(--status-urgent)]/10 text-[var(--status-urgent)]"
+                    )}
+                  >
+                    {testResult.valid ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                    <span>{testResult.message}</span>
+                  </div>
+                )}
+              </div>
 
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
-            Google Gemini API Key
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="AIzaSy..."
-              className="flex-1 px-3 py-2 text-xs rounded-xl bg-black/3 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-gray-900 dark:text-gray-100"
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              isLoading={testingKey}
-              onClick={handleTestKey}
-            >
-              Test Key
-            </Button>
-          </div>
-
-          {keyResult && (
-            <div
-              className={`p-2.5 rounded-xl text-xs flex items-center gap-2 ${
-                keyResult.success
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                  : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-              }`}
-            >
-              {keyResult.success ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-              )}
-              <span>{keyResult.message}</span>
+              {/* Model Select */}
+              <div className="pt-2">
+                <label className="text-[10px] font-semibold text-[var(--text-muted)] tracking-widest uppercase block mb-1.5">
+                  Default Reasoning Model
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", desc: "Fast, multi-turn synthesis (Recommended)" },
+                    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", desc: "Deep dialectic reasoning & complex policy" },
+                    { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", desc: "Lightweight fallback tier" },
+                    { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", desc: "Legacy long-context model" },
+                  ].map((m) => {
+                    const isSelected = settings.defaultModel === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          updateSettings({ defaultModel: m.id });
+                          toast.success(`Default model set to ${m.name}`);
+                        }}
+                        className={cn(
+                          "flex flex-col text-left p-3 rounded-xl transition-all duration-150",
+                          isSelected
+                            ? "bg-[var(--bg-tertiary)] ring-1 ring-[var(--accent)]"
+                            : "bg-[var(--bg-primary)] hover:bg-[var(--bg-tertiary)]"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-[var(--text-primary)]">
+                            {m.name}
+                          </span>
+                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-primary)]" />}
+                        </div>
+                        <span className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                          {m.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
-              Default Reasoning Model
-            </label>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl bg-black/3 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none text-gray-900 dark:text-gray-100"
-            >
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
-              <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Dialectics)</option>
-              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-            </select>
-          </div>
+          {/* SECTION 2: Budget & Limits */}
+          {activeSection === "budget" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                  Budget & Session Limits
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Set safety spend caps and control the maximum depth of council rounds.
+                </p>
+              </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
-              Monthly Budget Spend Cap ($ USD)
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={500}
-              value={spendCapCents / 100}
-              onChange={(e) => setSpendCapCents(Math.round(parseFloat(e.target.value || '0') * 100))}
-              className="w-full px-3 py-2 text-xs rounded-xl bg-black/3 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none text-gray-900 dark:text-gray-100 font-mono"
-            />
-          </div>
-        </div>
+              {/* Usage & Headroom Summary Card */}
+              <div className="p-4 rounded-xl bg-[var(--bg-tertiary)] space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--text-primary)]">
+                    Monthly Spend Headroom
+                  </span>
+                  <Badge variant={usage.utilizationPercent > 80 ? "urgent" : "low"} size="sm">
+                    {usage.utilizationPercent}% Used
+                  </Badge>
+                </div>
 
-        {/* Mock Mode Toggle */}
-        <div className="pt-3 border-t border-black/5 dark:border-white/5 flex items-center justify-between">
-          <div>
-            <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 block">
-              Simulation Mode (Zero API Calls)
-            </span>
-            <span className="text-[11px] text-gray-500">
-              Run council deliberations deterministically using local archetype test doubles.
-            </span>
-          </div>
-          <input
-            type="checkbox"
-            checked={mockMode}
-            onChange={(e) => setMockMode(e.target.checked)}
-            className="w-4 h-4 accent-indigo-600 rounded"
-          />
-        </div>
-      </GlassCard>
+                <div className="w-full h-2 rounded-full bg-[var(--bg-primary)] overflow-hidden">
+                  <div
+                    className="h-full bg-[var(--accent)] rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(usage.utilizationPercent, 100)}%` }}
+                  />
+                </div>
 
-      {/* Execution Limits */}
-      <GlassCard padded="md" className="space-y-4 !rounded-2xl">
-        <div className="flex items-center gap-2">
-          <Cpu className="w-4 h-4 text-purple-500" />
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Concurrency & Session Bounds
-          </h2>
-        </div>
+                <div className="grid grid-cols-3 gap-2 pt-2 text-center">
+                  <div className="p-2 rounded-lg bg-[var(--bg-secondary)]">
+                    <span className="text-[10px] text-[var(--text-muted)] uppercase block">Spent</span>
+                    <span className="text-xs font-mono font-semibold text-[var(--text-primary)]">
+                      ${usage.monthlySpendUSD.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-[var(--bg-secondary)]">
+                    <span className="text-[10px] text-[var(--text-muted)] uppercase block">Cap</span>
+                    <span className="text-xs font-mono font-semibold text-[var(--text-primary)]">
+                      ${settings.monthlySpendCapUSD.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-[var(--bg-secondary)]">
+                    <span className="text-[10px] text-[var(--text-muted)] uppercase block">Calls</span>
+                    <span className="text-xs font-mono font-semibold text-[var(--text-primary)]">
+                      {usage.totalCalls.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div>
-            <label className="font-semibold text-gray-700 dark:text-gray-300 block mb-1">
-              Concurrency Limit ({concurrency} workers)
-            </label>
-            <input
-              type="range"
-              min={1}
-              max={8}
-              value={concurrency}
-              onChange={(e) => setConcurrency(parseInt(e.target.value, 10))}
-              className="w-full accent-indigo-600"
-            />
-          </div>
+              {/* Sliders */}
+              <div className="space-y-5 pt-2">
+                <Slider
+                  label="Monthly Spend Cap ($ USD)"
+                  unit=" USD"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={settings.monthlySpendCapUSD}
+                  onChange={(val) => updateSettings({ monthlySpendCapUSD: val })}
+                  description="Hard ceiling. Sessions will refuse to initiate when spend reaches this cap."
+                />
 
-          <div>
-            <label className="font-semibold text-gray-700 dark:text-gray-300 block mb-1">
-              LLM Call Budget ({callBudget} calls max)
-            </label>
-            <input
-              type="range"
-              min={20}
-              max={160}
-              step={10}
-              value={callBudget}
-              onChange={(e) => setCallBudget(parseInt(e.target.value, 10))}
-              className="w-full accent-indigo-600"
-            />
-          </div>
-        </div>
-      </GlassCard>
+                <Slider
+                  label="Max Cross-Examination Rounds"
+                  unit=" rounds"
+                  min={1}
+                  max={8}
+                  step={1}
+                  value={settings.maxCrossExamRounds}
+                  onChange={(val) => updateSettings({ maxCrossExamRounds: val })}
+                  description="Number of dialectic debate cycles between personas before forcing synthesis."
+                />
+
+                <Slider
+                  label="Max Ratification Cycles"
+                  unit=" cycles"
+                  min={1}
+                  max={5}
+                  step={1}
+                  value={settings.maxRatificationCycles}
+                  onChange={(val) => updateSettings({ maxRatificationCycles: val })}
+                  description="Maximum voting attempts to reach supermajority consensus on the verdict."
+                />
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 3: Appearance */}
+          {activeSection === "appearance" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                  Appearance & Motion
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Customize the interface theme and visual dynamics.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <SettingRow
+                  label="Color Theme"
+                  description="Toggle between pure Atlas Black and crisp monochrome Light mode."
+                >
+                  <button
+                    id="settings-theme-toggle"
+                    type="button"
+                    onClick={toggleTheme}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--bg-tertiary)] text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--border-subtle)] transition-colors"
+                  >
+                    {isDark ? <Moon size={14} /> : <Sun size={14} />}
+                    <span className="capitalize">{isDark ? "Dark" : "Light"}</span>
+                  </button>
+                </SettingRow>
+
+                <SettingRow
+                  label="Reduced Motion"
+                  description="Disable spring animations and physics-based transitions for accessibility."
+                >
+                  <Toggle
+                    checked={settings.enableReducedMotion}
+                    onChange={(checked) => updateSettings({ enableReducedMotion: checked })}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label="3D Disc Tilt"
+                  description="Enable subtle cursor-reactive perspective tilt on the circular Round Table."
+                >
+                  <Toggle
+                    checked={settings.enable3DTilt}
+                    onChange={(checked) => updateSettings({ enable3DTilt: checked })}
+                  />
+                </SettingRow>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 4: Data & Storage */}
+          {activeSection === "data" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                  Data & Local Storage
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  SQLite database configuration, durable runner state, and export tools.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[var(--bg-tertiary)] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--text-primary)]">
+                    Local Database Engine
+                  </span>
+                  <Badge variant="low" size="sm">
+                    SQLite WAL Active
+                  </Badge>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  The Council stores all deliberations, append-only event streams, and spend ledgers in a private, local SQLite database with Write-Ahead Logging for high concurrency.
+                </p>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <SettingRow
+                  label="Durable Task Runner"
+                  description="Multi-worker background supervisor for long-running multi-turn deliberations."
+                >
+                  <Badge variant={engineStatus.runnerActive ? "low" : "urgent"} size="sm">
+                    {engineStatus.runnerActive ? "Active" : "Stopped"}
+                  </Badge>
+                </SettingRow>
+
+                <SettingRow
+                  label="Local Network (LAN) Sharing"
+                  description="Allow trusted devices on the local subnet to view the deliberation chamber."
+                >
+                  <Toggle
+                    checked={settings.enableLAN}
+                    onChange={(checked) => updateSettings({ enableLAN: checked })}
+                  />
+                </SettingRow>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 5: Shortcuts */}
+          {activeSection === "shortcuts" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                  Keyboard Shortcuts
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Navigate The Council rapidly with keyboard commands.
+                </p>
+              </div>
+
+              <div className="divide-y divide-[var(--border-subtle)]">
+                {[
+                  { keys: ["⌘K", "Ctrl+K"], action: "Open Command Palette" },
+                  { keys: ["N"], action: "New Deliberation" },
+                  { keys: ["G", "H"], action: "Go to History" },
+                  { keys: ["G", "S"], action: "Go to Settings" },
+                  { keys: ["T"], action: "Toggle Theme (Dark / Light)" },
+                  { keys: ["Esc"], action: "Close Dialogs / Drawers" },
+                ].map((s, idx) => (
+                  <div key={idx} className="flex items-center justify-between py-3">
+                    <span className="text-xs text-[var(--text-primary)]">{s.action}</span>
+                    <div className="flex items-center gap-1">
+                      {s.keys.map((k, kIdx) => (
+                        <kbd
+                          key={kIdx}
+                          className="px-2 py-1 rounded bg-[var(--bg-tertiary)] text-[11px] font-mono text-[var(--text-secondary)]"
+                        >
+                          {k}
+                        </kbd>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 6: About */}
+          {activeSection === "about" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                  About The Council
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Autonomous dialectic reasoning system with Atlas-grade interface.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[var(--bg-tertiary)] space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className="text-[var(--text-primary)]" />
+                  <span className="text-xs font-semibold text-[var(--text-primary)]">
+                    The Council v2.0
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  An adversarial multi-agent dialectic chamber where 8 specialized personas deliberate complex trade-offs under the guidance of a neutral Moderator. Built to pair seamlessly with Atlas.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="p-3 rounded-xl bg-[var(--bg-primary)]">
+                  <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider block">Design DNA</span>
+                  <span className="text-xs font-medium text-[var(--text-primary)] mt-1 block">
+                    Atlas-Grade Monochrome
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-[var(--bg-primary)]">
+                  <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider block">Storage</span>
+                  <span className="text-xs font-medium text-[var(--text-primary)] mt-1 block">
+                    Local-First SQLite
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </motion.div>
+      </div>
     </div>
   );
 }

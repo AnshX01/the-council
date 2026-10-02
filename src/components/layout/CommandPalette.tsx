@@ -1,25 +1,35 @@
-'use client';
+/**
+ * Origin: AnshX01/Atlas (frontend/src/components/layout/CommandPalette.tsx)
+ * Global Fuse.js fuzzy command palette with session jump and keyboard shortcuts.
+ */
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+"use client";
+
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Search,
-  PlusCircle,
+  Plus,
   History,
   Settings,
   Activity,
   Sun,
   Moon,
-  Shield,
-  Palette,
-  KeyRound,
-  ExternalLink,
-} from 'lucide-react';
+  Compass,
+  List,
+  Sparkles,
+  RotateCcw,
+  FileText,
+  Copy,
+} from "lucide-react";
+import Fuse from "fuse.js";
+import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/Toast";
 
 interface CommandItem {
   id: string;
   label: string;
-  category: string;
+  category: "Actions" | "Navigation" | "Recent Deliberations" | "Chamber";
   icon: React.ReactNode;
   onSelect: () => void;
   shortcut?: string;
@@ -27,209 +37,314 @@ interface CommandItem {
 
 export function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [recentSessions, setRecentSessions] = useState<Array<{ id: string; title: string }>>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const pathname = usePathname();
+
+  // Load recent sessions for quick jumping
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch("/api/v1/sessions?limit=8")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (json?.data?.sessions || json?.sessions) {
+          setRecentSessions(json.data?.sessions || json.sessions);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
 
   const toggleTheme = useCallback(() => {
-    const isDark = document.documentElement.classList.contains('dark');
-    if (isDark) {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('the_council_theme', 'light');
+    const isDark = document.documentElement.classList.contains("dark");
+    const next = isDark ? "light" : "dark";
+    if (next === "dark") {
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('the_council_theme', 'dark');
+      document.documentElement.classList.remove("dark");
     }
+    toast.info(`Theme set to ${next} mode`);
   }, []);
 
-  const commands: CommandItem[] = useMemo(
-    () => [
+  const commands: CommandItem[] = useMemo(() => {
+    const list: CommandItem[] = [
       {
-        id: 'new-session',
-        label: 'Start New Deliberation',
-        category: 'Actions',
-        icon: <PlusCircle className="w-4 h-4 text-indigo-500" />,
-        shortcut: 'N',
-        onSelect: () => router.push('/'),
+        id: "new-deliberation",
+        label: "Start New Deliberation",
+        category: "Actions",
+        icon: <Plus size={16} />,
+        shortcut: "N",
+        onSelect: () => router.push("/"),
       },
       {
-        id: 'history',
-        label: 'Deliberation Archive & History',
-        category: 'Navigation',
-        icon: <History className="w-4 h-4 text-sky-500" />,
-        shortcut: 'H',
-        onSelect: () => router.push('/history'),
+        id: "nav-history",
+        label: "History (Deliberation Archive)",
+        category: "Navigation",
+        icon: <History size={16} />,
+        shortcut: "G H",
+        onSelect: () => router.push("/history"),
       },
       {
-        id: 'settings',
-        label: 'Settings & API Keys',
-        category: 'Navigation',
-        icon: <Settings className="w-4 h-4 text-amber-500" />,
-        shortcut: 'S',
-        onSelect: () => router.push('/settings'),
+        id: "nav-settings",
+        label: "Settings & API Keys",
+        category: "Navigation",
+        icon: <Settings size={16} />,
+        shortcut: "G S",
+        onSelect: () => router.push("/settings"),
       },
       {
-        id: 'diagnostics',
-        label: 'System Diagnostics & Health Probes',
-        category: 'System',
-        icon: <Activity className="w-4 h-4 text-emerald-500" />,
-        shortcut: 'D',
-        onSelect: () => router.push('/diagnostics'),
+        id: "nav-diagnostics",
+        label: "Diagnostics & System Health",
+        category: "Navigation",
+        icon: <Activity size={16} />,
+        shortcut: "G D",
+        onSelect: () => router.push("/diagnostics"),
       },
       {
-        id: 'dev-ui',
-        label: 'Design System Living Catalog (/dev/ui)',
-        category: 'Development',
-        icon: <Palette className="w-4 h-4 text-purple-500" />,
-        shortcut: 'U',
-        onSelect: () => router.push('/dev/ui'),
-      },
-      {
-        id: 'toggle-theme',
-        label: 'Toggle Dark / Light Theme',
-        category: 'Preferences',
-        icon: <Moon className="w-4 h-4 text-zinc-400" />,
-        shortcut: 'T',
+        id: "toggle-theme",
+        label: "Toggle Dark / Light Theme",
+        category: "Actions",
+        icon: <Sun size={16} />,
+        shortcut: "T",
         onSelect: toggleTheme,
       },
       {
-        id: 'test-key',
-        label: 'Test Gemini API Key Connection',
-        category: 'System',
-        icon: <KeyRound className="w-4 h-4 text-rose-500" />,
-        onSelect: () => router.push('/settings?action=test-key'),
+        id: "toggle-view",
+        label: "Toggle Round Table / List View",
+        category: "Chamber",
+        icon: <List size={16} />,
+        onSelect: () => {
+          window.dispatchEvent(new CustomEvent("council:toggle-table-view"));
+          toast.info("Toggled chamber view mode");
+        },
       },
-    ],
-    [router, toggleTheme]
+    ];
+
+    // Add session contextual actions if viewing a deliberation
+    const match = pathname.match(/\/(?:c|session)\/([a-zA-Z0-9_-]+)/);
+    if (match) {
+      const sessionId = match[1];
+      list.push(
+        {
+          id: "session-rerun",
+          label: "Rerun Deliberation",
+          category: "Chamber",
+          icon: <RotateCcw size={16} />,
+          onSelect: () => {
+            fetch(`/api/v1/sessions/${sessionId}/rerun`, { method: "POST" })
+              .then((res) => res.json())
+              .then((json) => {
+                const newId = json.data?.session?.id || json.session?.id;
+                if (newId) router.push(`/c/${newId}`);
+              });
+          },
+        },
+        {
+          id: "session-export-md",
+          label: "Export Deliberation as Markdown",
+          category: "Chamber",
+          icon: <FileText size={16} />,
+          onSelect: () => {
+            window.open(`/api/v1/sessions/${sessionId}/export?format=md`, "_blank");
+          },
+        },
+        {
+          id: "session-copy-summary",
+          label: "Copy Resolution Summary",
+          category: "Chamber",
+          icon: <Copy size={16} />,
+          onSelect: () => {
+            window.dispatchEvent(new CustomEvent("council:copy-summary"));
+          },
+        }
+      );
+    }
+
+    // Add recent session shortcuts
+    recentSessions.forEach((s) => {
+      list.push({
+        id: `recent-${s.id}`,
+        label: s.title || `Deliberation ${s.id.slice(0, 8)}`,
+        category: "Recent Deliberations",
+        icon: <Compass size={16} />,
+        onSelect: () => router.push(`/c/${s.id}`),
+      });
+    });
+
+    return list;
+  }, [router, pathname, recentSessions, toggleTheme]);
+
+  // Fuse.js index for fuzzy searching
+  const fuse = useMemo(
+    () =>
+      new Fuse(commands, {
+        keys: ["label", "category", "id"],
+        threshold: 0.45,
+        ignoreLocation: true,
+      }),
+    [commands]
   );
 
-  const filteredCommands = useMemo(() => {
+  const filtered = useMemo(() => {
     if (!query.trim()) return commands;
-    const lower = query.toLowerCase();
-    return commands.filter(
-      (c) =>
-        c.label.toLowerCase().includes(lower) ||
-        c.category.toLowerCase().includes(lower)
-    );
-  }, [commands, query]);
+    return fuse.search(query).map((res) => res.item);
+  }, [fuse, query, commands]);
 
+  // Keyboard navigation & global shortcuts
   useEffect(() => {
-    setSelectedIndex(0);
-  }, [query]);
-
-  // Global shortcut: Ctrl+K / Cmd+K
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle palette: Cmd+K / Ctrl+K
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setIsOpen((prev) => !prev);
-      } else if (e.key === 'Escape' && isOpen) {
+        return;
+      }
+
+      // If palette is open:
+      if (isOpen) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setIsOpen(false);
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSelectedIndex((i) => (i + 1) % Math.max(1, filtered.length));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSelectedIndex((i) => (i - 1 + filtered.length) % Math.max(1, filtered.length));
+          return;
+        }
+        if (e.key === "Enter" && filtered[selectedIndex]) {
+          e.preventDefault();
+          filtered[selectedIndex].onSelect();
+          setIsOpen(false);
+          return;
+        }
+        return;
+      }
+
+      // Single key global shortcuts when no input is focused:
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.key === "N" && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        setIsOpen(false);
+        router.push("/");
+      } else if (e.key === "T" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        toggleTheme();
       }
     };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isOpen]);
+
+    window.addEventListener("keydown", handleKeyDown);
+    const handleCustomOpen = () => setIsOpen(true);
+    window.addEventListener("open-command-palette", handleCustomOpen);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("open-command-palette", handleCustomOpen);
+    };
+  }, [isOpen, filtered, selectedIndex, router, toggleTheme]);
 
   useEffect(() => {
     if (isOpen) {
-      inputRef.current?.focus();
-      const t = setTimeout(() => inputRef.current?.focus(), 10);
-      return () => clearTimeout(t);
-    } else {
-      setQuery('');
+      setQuery("");
+      setSelectedIndex(0);
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isOpen]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % filteredCommands.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (filteredCommands[selectedIndex]) {
-        filteredCommands[selectedIndex].onSelect();
-        setIsOpen(false);
-      }
-    }
-  };
 
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-20 px-4 animate-fade-in"
-      onClick={() => setIsOpen(false)}
-      onKeyDown={handleKeyDown}
-      tabIndex={-1}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Command palette"
-    >
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
+      {/* Backdrop */}
       <div
-        className="w-full max-w-lg glass-panel-elevated shadow-2xl rounded-2xl overflow-hidden border border-white/20 dark:border-white/10"
-        onClick={(e) => e.stopPropagation()}
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
+        onClick={() => setIsOpen(false)}
+      />
+
+      {/* Modal Dialog */}
+      <div
+        role="dialog"
+        aria-label="Command palette"
+        className="relative z-10 w-full max-w-lg rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] overflow-hidden animate-spring-scale"
       >
-        {/* Search Input Bar */}
-        <div className="flex items-center px-4 py-3.5 gap-3 border-b border-black/5 dark:border-white/10">
-          <Search className="w-4 h-4 text-gray-400 shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-subtle)]">
+          <Search size={16} className="text-[var(--text-muted)] flex-shrink-0" />
           <input
-            ref={inputRef}
             autoFocus
-            type="text"
+            ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a command or jump to page... (Esc to close)"
-            className="flex-1 bg-transparent outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelectedIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && filtered[selectedIndex]) {
+                e.preventDefault();
+                filtered[selectedIndex].onSelect();
+                setIsOpen(false);
+              }
+            }}
+            placeholder="Type a command or search deliberations..."
+            className="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+            aria-label="Command palette input"
           />
-          <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono text-gray-400 bg-black/5 dark:bg-white/10 rounded">
+          <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
             ESC
           </kbd>
         </div>
 
-        {/* Command List */}
-        <div className="max-h-72 overflow-y-auto p-2 space-y-1">
-          {filteredCommands.length > 0 ? (
-            filteredCommands.map((cmd, i) => (
-              <div
-                key={cmd.id}
-                onClick={() => {
-                  cmd.onSelect();
-                  setIsOpen(false);
-                }}
-                onMouseEnter={() => setSelectedIndex(i)}
-                className={`flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-                  selectedIndex === i
-                    ? 'bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="shrink-0">{cmd.icon}</span>
-                  <span className="text-xs sm:text-sm font-medium">{cmd.label}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-400 uppercase tracking-wider">
-                    {cmd.category}
-                  </span>
+        <div className="max-h-80 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+          {filtered.length === 0 ? (
+            <div className="py-8 text-center text-xs text-[var(--text-muted)]">
+              No matching commands or deliberations found
+            </div>
+          ) : (
+            filtered.map((cmd, idx) => {
+              const isSelected = idx === selectedIndex;
+              return (
+                <button
+                  key={cmd.id}
+                  onClick={() => {
+                    cmd.onSelect();
+                    setIsOpen(false);
+                  }}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  className={cn(
+                    "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer text-left",
+                    isSelected
+                      ? "bg-[var(--accent)]/10 text-[var(--text-primary)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                    <span className="text-[var(--text-muted)] flex-shrink-0">
+                      {cmd.icon}
+                    </span>
+                    <span className="truncate font-medium">{cmd.label}</span>
+                  </div>
                   {cmd.shortcut && (
-                    <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-gray-400 bg-black/5 dark:bg-white/10 rounded">
+                    <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)] flex-shrink-0">
                       {cmd.shortcut}
                     </kbd>
                   )}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="py-8 text-center text-xs text-gray-500 dark:text-gray-400">
-              No matching commands found.
-            </div>
+                </button>
+              );
+            })
           )}
         </div>
       </div>

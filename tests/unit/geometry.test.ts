@@ -4,6 +4,8 @@ import {
   computeInteractionArc,
   euclideanDistance,
   validateLayoutNonOverlapping,
+  computeOutwardLabelAnchor,
+  computeSpeechBubbleAnchor,
   SeatPersona,
 } from '@/lib/council/geometry';
 
@@ -106,5 +108,24 @@ describe('Council Seating Geometry Engine', () => {
 
     const arc = computeInteractionArc(seatA, seatB, center, { curvature: 0.5 });
     expect(arc).toMatch(/^M \d+(\.\d+)? \d+(\.\d+)? C \d+(\.\d+)? \d+(\.\d+)?, \d+(\.\d+)? \d+(\.\d+)?, \d+(\.\d+)? \d+(\.\d+)?$/);
+  });
+
+  it('computes outward label directions correctly around the clock', () => {
+    expect(computeOutwardLabelAnchor(270)).toBe('top');
+    expect(computeOutwardLabelAnchor(90)).toBe('bottom');
+    expect(computeOutwardLabelAnchor(0)).toBe('right');
+    expect(computeOutwardLabelAnchor(180)).toBe('left');
+  });
+
+  it('computes collision-free speech bubble anchors inside stage bounds', () => {
+    const center = { x: 320, y: 320 };
+    const seat = { x: 320, y: 80 };
+    const anchor = computeSpeechBubbleAnchor(seat, center, 640);
+
+    expect(anchor.x).toBeGreaterThanOrEqual(40);
+    expect(anchor.x).toBeLessThanOrEqual(600);
+    expect(anchor.y).toBeGreaterThanOrEqual(40);
+    expect(anchor.y).toBeLessThanOrEqual(600);
+    expect(anchor.y).toBeGreaterThan(seat.y);
   });
 });

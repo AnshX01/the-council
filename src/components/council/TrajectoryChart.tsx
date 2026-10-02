@@ -1,159 +1,168 @@
-'use client';
+/**
+ * Origin: The Council — Trajectory Shifts Panel (Section 5.3)
+ * Uses pure selectConfidenceTrajectories to guarantee accurate shifts (B6 fix).
+ * Displays compact rows: glyph tile · name · sparkline · 85 → 90 (+5) · ratification badge.
+ */
 
-import React from 'react';
-import { COUNCIL_MEMBERS, PersonaProfile } from '@/lib/council/personas';
-import { OpeningPosition, CrossExamRound, RatificationVote } from '@/types/session';
-import { TrendingUp, TrendingDown, Minus, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
-import { Badge } from '@/components/ui/Badge';
+"use client";
+
+import React, { useState } from "react";
+import { COUNCIL_MEMBERS, PersonaProfile, findPersonaById } from "@/lib/council/personas";
+import { DeliberationSession } from "@/types/session";
+import { CouncilSSEEvent } from "@/types/events";
+import { selectConfidenceTrajectories, PersonaTrajectory } from "@/lib/ui/selectors";
+import { Check, Edit3, X, ChevronDown, ChevronUp } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface TrajectoryChartProps {
-  openingPositions?: Partial<Record<string, OpeningPosition>>;
-  crossExamRounds?: CrossExamRound[];
-  ratificationVotes?: Partial<Record<string, RatificationVote>>;
+  session?: DeliberationSession | null;
+  events?: CouncilSSEEvent[];
   onSelectPersona?: (persona: PersonaProfile) => void;
   className?: string;
 }
 
 export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
-  openingPositions = {},
-  crossExamRounds = [],
-  ratificationVotes = {},
+  session,
+  events,
   onSelectPersona,
-  className = '',
+  className = "",
 }) => {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Derive trajectories via pure selector
+  const trajectories = selectConfidenceTrajectories(session || events || null);
+
+  const toggleExpand = (id: string) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
+
   return (
-    <div className={`w-full glass-panel-subtle p-4 sm:p-5 rounded-2xl space-y-4 ${className}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100">
-            How Views Shifted (Trajectory Analysis)
-          </h3>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400">
-            Tracking epistemic movement from opening thesis through dialectical cross-examination
-          </p>
-        </div>
-        <Badge variant="neutral" size="xs">
-          8 Member Shifts
-        </Badge>
+    <div className={cn("flex flex-col gap-3 select-text", className)}>
+      <div className="flex items-center justify-between px-1 mb-1">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+          How Personas&apos; Views Shifted
+        </span>
+        <span className="text-[10px] text-[var(--text-muted)]">
+          Dialectical Movement Across Rounds
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="flex flex-col gap-2">
         {COUNCIL_MEMBERS.map((member) => {
-          const opening = openingPositions[member.id];
-          const openingConf = opening?.confidenceScore ?? 50;
+          const t: PersonaTrajectory = trajectories[member.id] || {
+            personaId: member.id,
+            initialConfidence: 50,
+            finalConfidence: 50,
+            delta: 0,
+            points: [],
+            formattedShift: "50 → 50 (0)",
+          };
 
-          // Track confidence over rounds
-          const confPoints: number[] = [openingConf];
-          let lastShiftReason: string | null = null;
-          let catalysts: string[] = [];
-
-          crossExamRounds.forEach((round) => {
-            const turn = round.turns[member.id];
-            if (turn) {
-              confPoints.push(turn.updatedConfidence);
-              if (turn.shiftRecord) {
-                lastShiftReason = turn.shiftRecord.shiftRationale;
-                catalysts = turn.shiftRecord.catalystPersonaIds;
-              }
-            }
-          });
-
-          const currentConf = confPoints[confPoints.length - 1];
-          const delta = currentConf - openingConf;
-          const vote = ratificationVotes[member.id];
-
-          // Sparkline coordinates (width 80, height 24)
-          const sparkWidth = 72;
-          const sparkHeight = 22;
-          const sparkPoints = confPoints
-            .map((val, idx) => {
-              const x = confPoints.length === 1 ? sparkWidth / 2 : (idx / (confPoints.length - 1)) * sparkWidth;
-              const y = sparkHeight - (val / 100) * sparkHeight;
-              return `${Math.round(x)},${Math.round(y)}`;
-            })
-            .join(' ');
+          const isExpanded = expandedId === member.id;
+          const delta = t.delta;
+          const vote = t.ratificationVote;
 
           return (
             <div
               key={member.id}
-              onClick={() => onSelectPersona?.(member)}
-              role="button"
-              tabIndex={0}
-              className="p-3 rounded-xl border border-black/5 dark:border-white/5 bg-white/40 dark:bg-white/2 hover:border-black/10 dark:hover:border-white/15 transition-all text-xs space-y-2 cursor-pointer"
+              className="p-3.5 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] flex flex-col gap-2.5 transition-colors"
             >
-              <div className="flex items-center justify-between">
-                <span className="font-semibold" style={{ color: member.colorHex }}>
-                  {member.name}
-                </span>
+              <div className="flex items-center justify-between gap-3">
+                {/* Persona Identity */}
+                <div
+                  onClick={() => onSelectPersona?.(member)}
+                  className="flex items-center gap-2.5 cursor-pointer min-w-0"
+                >
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{
+                      backgroundColor: `${member.colorHex}20`,
+                      color: member.colorHex,
+                    }}
+                  >
+                    {member.name.charAt(0)}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                      {member.name}
+                    </h4>
+                    <p className="text-[10px] text-[var(--text-muted)] truncate">{member.title}</p>
+                  </div>
+                </div>
 
-                {/* Delta Badge */}
-                <div className="flex items-center gap-1 font-mono text-[11px] font-bold">
-                  {delta > 0 ? (
-                    <span className="text-emerald-500 inline-flex items-center">
-                      <TrendingUp className="w-3 h-3 mr-0.5" />+{delta}%
+                {/* Right: Sparkline, Trajectory String & Ratification Badge */}
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  {/* Sparkline */}
+                  {t.points.length > 1 && (
+                    <div className="w-20 h-6 flex items-end gap-1">
+                      {t.points.map((pt, pIdx) => (
+                        <div
+                          key={pIdx}
+                          className="flex-1 bg-[var(--accent)]/40 rounded-t"
+                          style={{
+                            height: `${Math.max(6, (pt.confidence / 100) * 24)}px`,
+                          }}
+                          title={`Round ${pt.round}: ${pt.confidence}%`}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Formatted Shift: e.g. 85 → 90 (+5) */}
+                  <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
+                    {t.initialConfidence} → {t.finalConfidence}{" "}
+                    <span
+                      className={cn(
+                        "text-[11px]",
+                        delta > 0
+                          ? "text-[var(--status-low)]"
+                          : delta < 0
+                          ? "text-[var(--status-urgent)]"
+                          : "text-[var(--text-muted)]"
+                      )}
+                    >
+                      ({delta > 0 ? `+${delta}` : delta})
                     </span>
-                  ) : delta < 0 ? (
-                    <span className="text-rose-500 inline-flex items-center">
-                      <TrendingDown className="w-3 h-3 mr-0.5" />{delta}%
+                  </span>
+
+                  {/* Ratification Badge */}
+                  {vote && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono",
+                        vote === "sign_off" && "bg-[var(--status-low)]/10 text-[var(--status-low)]",
+                        vote === "amendment" && "bg-[var(--status-medium)]/10 text-[var(--status-medium)]",
+                        vote === "dissent" && "bg-[var(--status-urgent)]/10 text-[var(--status-urgent)]"
+                      )}
+                    >
+                      {vote === "sign_off" && <Check size={10} />}
+                      {vote === "amendment" && <Edit3 size={10} />}
+                      {vote === "dissent" && <X size={10} />}
+                      <span className="capitalize">{vote.replace(/_/g, " ")}</span>
                     </span>
-                  ) : (
-                    <span className="text-gray-400 inline-flex items-center">
-                      <Minus className="w-3 h-3 mr-0.5" />0%
-                    </span>
+                  )}
+
+                  {/* Expand button */}
+                  {(t.amendmentReason || t.dissentReason) && (
+                    <button
+                      onClick={() => toggleExpand(member.id)}
+                      className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      aria-label="Toggle shift reason"
+                    >
+                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
                   )}
                 </div>
               </div>
 
-              {/* Sparkline & Current Confidence */}
-              <div className="flex items-center justify-between pt-1">
-                <div className="w-[72px] h-[22px]">
-                  <svg width={sparkWidth} height={sparkHeight} className="overflow-visible">
-                    <polyline
-                      fill="none"
-                      stroke={member.colorHex}
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      points={sparkPoints}
-                    />
-                  </svg>
-                </div>
-
-                <div className="text-right">
-                  <span className="text-[10px] text-gray-400 uppercase font-mono block">
-                    Confidence
+              {/* Expanded details */}
+              {isExpanded && (t.amendmentReason || t.dissentReason) && (
+                <div className="pt-2 border-t border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] leading-relaxed">
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    {vote === "amendment" ? "Proposed Amendment: " : "Core Dissent Principle: "}
                   </span>
-                  <span className="font-mono font-bold text-gray-900 dark:text-gray-100 tabular-nums">
-                    {currentConf}%
-                  </span>
+                  <span>{t.amendmentReason || t.dissentReason}</span>
                 </div>
-              </div>
-
-              {/* Vote result badge */}
-              {vote && (
-                <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-[11px]">
-                  <span className="text-gray-400">Ratification:</span>
-                  {vote.vote === 'SIGN_OFF' ? (
-                    <Badge variant="success" size="xs" icon={<CheckCircle2 className="w-3 h-3" />}>
-                      Sign-Off
-                    </Badge>
-                  ) : vote.vote === 'SIGN_OFF_WITH_AMENDMENT' ? (
-                    <Badge variant="warning" size="xs" icon={<AlertTriangle className="w-3 h-3" />}>
-                      Amendment
-                    </Badge>
-                  ) : (
-                    <Badge variant="danger" size="xs" icon={<XCircle className="w-3 h-3" />}>
-                      Dissent
-                    </Badge>
-                  )}
-                </div>
-              )}
-
-              {/* Catalyst note */}
-              {lastShiftReason && (
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-1 italic pt-1">
-                  Shifted: &ldquo;{lastShiftReason}&rdquo;
-                </p>
               )}
             </div>
           );

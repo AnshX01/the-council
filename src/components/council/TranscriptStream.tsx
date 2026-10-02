@@ -1,249 +1,255 @@
-'use client';
+/**
+ * Origin: The Council — Transcript Stream (Section 5.3)
+ * Atlas-style tonal rows on base surface, safe markdown, persona stance badges,
+ * slim system dividers, virtualized scrolling, and throttled aria-live announcements.
+ */
 
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  Volume2,
-  ChevronDown,
-  ChevronUp,
-  ArrowDown,
-  Compass,
-  Sparkles,
-  Scale,
-  Hammer,
-  Network,
-  Hourglass,
-  Heart,
-  Flame,
-  Crown,
-  Shield,
-  Filter,
-} from 'lucide-react';
-import { PersonaProfile } from '@/types/persona';
-import { ALL_PERSONAS, findPersonaById } from '@/lib/council/personas';
-import { Badge } from '@/components/ui/Badge';
+"use client";
 
-export interface TranscriptEvent {
-  id: string;
-  seq: number;
-  personaId: string;
-  phase: string;
-  type: string;
-  timestamp: string;
-  summary: string;
-  fullText?: string;
-  confidence?: number;
-  stance?: 'AGREE' | 'CHALLENGE' | 'CONCEDE' | 'NEUTRAL';
-  targetPersonaId?: string;
-}
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
+import { ArrowDown, Filter, User, Compass, Check, Zap, Hand } from "lucide-react";
+import { CouncilSSEEvent } from "@/types/events";
+import { PersonaId } from "@/types/persona";
+import { findPersonaById } from "@/lib/council/personas";
+import { selectTranscriptRows, TranscriptItem } from "@/lib/ui/selectors";
+import { cn } from "@/lib/utils";
 
 export interface TranscriptStreamProps {
-  events: TranscriptEvent[];
-  currentSpeakerId?: string;
-  onSelectPersona?: (persona: PersonaProfile) => void;
+  events: CouncilSSEEvent[];
   className?: string;
 }
 
-const GLYPH_MAP: Record<string, React.ElementType> = {
-  Crown,
-  Compass,
-  Sparkles,
-  Scale,
-  Hammer,
-  Network,
-  Hourglass,
-  Heart,
-  Flame,
-};
-
 export const TranscriptStream: React.FC<TranscriptStreamProps> = ({
-  events = [],
-  currentSpeakerId,
-  onSelectPersona,
-  className = '',
+  events,
+  className = "",
 }) => {
-  const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
-  const [filterPersonaId, setFilterPersonaId] = useState<string>('all');
-  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [selectedPersona, setSelectedPersona] = useState<string>("all");
+  const [selectedPhase, setSelectedPhase] = useState<string>("all");
+  const [isScrolledUp, setIsScrolledUp] = useState<boolean>(false);
+  const [liveAnnouncement, setLiveAnnouncement] = useState<string>("");
+
   const containerRef = useRef<HTMLDivElement>(null);
-  const bottomSentinelRef = useRef<HTMLDivElement>(null);
+  const lastAnnounceTimeRef = useRef<number>(0);
 
-  const filteredEvents = events.filter((ev) => {
-    if (filterPersonaId === 'all') return true;
-    return ev.personaId === filterPersonaId;
-  });
+  // Derive typed transcript items via pure selector (B7 fix)
+  const rows = useMemo(() => selectTranscriptRows(events), [events]);
 
-  // Auto-scroll when new events arrive if user hasn't scrolled up
+  // Throttled aria-live announcement
   useEffect(() => {
-    if (!userScrolledUp && bottomSentinelRef.current) {
-      bottomSentinelRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (rows.length === 0) return;
+    const latest = rows[rows.length - 1];
+    const now = Date.now();
+    if (now - lastAnnounceTimeRef.current >= 1000) {
+      lastAnnounceTimeRef.current = now;
+      if (latest.type === "narrative") {
+        setLiveAnnouncement(`${latest.personaId}: ${latest.content.slice(0, 80)}...`);
+      } else {
+        setLiveAnnouncement(latest.label);
+      }
     }
-  }, [events.length, userScrolledUp]);
+  }, [rows]);
+
+  // Filtered rows
+  const filteredRows = useMemo(() => {
+    return rows.filter((item) => {
+      if (item.type === "narrative") {
+        if (selectedPersona !== "all" && item.personaId !== selectedPersona) return false;
+        if (selectedPhase !== "all" && item.phase !== selectedPhase) return false;
+      }
+      return true;
+    });
+  }, [rows, selectedPersona, selectedPhase]);
+
+  // Auto-scroll to bottom unless user scrolled up
+  useEffect(() => {
+    if (!isScrolledUp && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [filteredRows, isScrolledUp]);
 
   const handleScroll = () => {
     if (!containerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-    const atBottom = scrollHeight - scrollTop - clientHeight < 60;
-    setUserScrolledUp(!atBottom);
+    const isUp = scrollHeight - scrollTop - clientHeight > 100;
+    setIsScrolledUp(isUp);
   };
 
   const scrollToBottom = () => {
-    setUserScrolledUp(false);
-    bottomSentinelRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const toggleExpand = (id: string) => {
-    setExpandedEvents((prev) => ({ ...prev, [id]: !prev[id] }));
+    if (containerRef.current) {
+      containerRef.current.scrollTo({
+        top: containerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+      setIsScrolledUp(false);
+    }
   };
 
   return (
-    <div className={`relative flex flex-col h-[520px] glass-panel-subtle rounded-2xl overflow-hidden ${className}`}>
-      {/* Stream Header */}
-      <div className="p-3.5 border-b border-black/5 dark:border-white/10 flex items-center justify-between bg-black/2 dark:bg-white/2">
-        <div className="flex items-center gap-2">
-          <Volume2 className="w-4 h-4 text-indigo-500" />
-          <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-            Deliberation Log & Transcripts
-          </span>
-          <Badge variant="neutral" size="xs">
-            {filteredEvents.length} Entries
-          </Badge>
+    <div className={cn("flex flex-col h-full relative select-text", className)}>
+      {/* Throttled Screen Reader Live Region */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {liveAnnouncement}
+      </div>
+
+      {/* Filter Controls Row */}
+      <div className="flex items-center justify-between p-2.5 mb-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] gap-2 text-xs">
+        <div className="flex items-center gap-2 text-[var(--text-muted)]">
+          <Filter size={13} />
+          <span className="text-[11px] font-medium">Filter:</span>
         </div>
 
-        {/* Persona Filter Dropdown */}
-        <div className="flex items-center gap-1.5">
-          <Filter className="w-3.5 h-3.5 text-gray-400" />
+        <div className="flex items-center gap-2">
+          {/* Persona Filter */}
           <select
-            value={filterPersonaId}
-            onChange={(e) => setFilterPersonaId(e.target.value)}
-            className="text-xs bg-transparent border border-black/10 dark:border-white/10 rounded-lg px-2 py-1 outline-none text-gray-700 dark:text-gray-300"
+            value={selectedPersona}
+            onChange={(e) => setSelectedPersona(e.target.value)}
+            className="bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-2 py-1 rounded-lg text-xs outline-none cursor-pointer"
+            aria-label="Filter transcript by persona"
           >
             <option value="all">All Members</option>
-            {ALL_PERSONAS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
+            <option value="moderator">Moderator</option>
+            <option value="skeptic">Skeptic</option>
+            <option value="optimist">Optimist</option>
+            <option value="ethicist">Ethicist</option>
+            <option value="pragmatist">Pragmatist</option>
+            <option value="systems_thinker">Systems Thinker</option>
+            <option value="historian">Historian</option>
+            <option value="humanist">Humanist</option>
+            <option value="contrarian">Contrarian</option>
+          </select>
+
+          {/* Phase Filter */}
+          <select
+            value={selectedPhase}
+            onChange={(e) => setSelectedPhase(e.target.value)}
+            className="bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-2 py-1 rounded-lg text-xs outline-none cursor-pointer"
+            aria-label="Filter transcript by phase"
+          >
+            <option value="all">All Phases</option>
+            <option value="PHASE_0_FRAMING">Framing</option>
+            <option value="PHASE_1_OPENING">Opening</option>
+            <option value="PHASE_2_CROSS_EXAM">Cross-Exam</option>
+            <option value="PHASE_4_RATIFICATION">Ratification</option>
+            <option value="PHASE_5_FINAL_OUTPUT">Verdict</option>
           </select>
         </div>
       </div>
 
-      {/* Events Scroll Area */}
+      {/* Main Transcript Rows Container */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 space-y-3"
+        className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1"
       >
-        {filteredEvents.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-400">
-            <Volume2 className="w-8 h-8 stroke-1 mb-2 opacity-40" />
-            <p className="text-xs">Chamber convened. Waiting for opening statements...</p>
+        {filteredRows.length === 0 ? (
+          <div className="py-16 text-center text-xs text-[var(--text-muted)]">
+            Awaiting council statements...
           </div>
         ) : (
-          filteredEvents.map((ev) => {
-            const persona = findPersonaById(ev.personaId);
-            const GlyphComponent = persona ? GLYPH_MAP[persona.avatarGlyph] || Shield : Shield;
-            const isSpeaking = currentSpeakerId === ev.personaId;
-            const isExpanded = Boolean(expandedEvents[ev.id]);
-            const targetPersona = ev.targetPersonaId ? findPersonaById(ev.targetPersonaId) : null;
+          filteredRows.map((row) => {
+            if (row.type === "system_divider") {
+              return (
+                <div
+                  key={row.id}
+                  className="flex items-center gap-3 py-2 text-center select-none"
+                >
+                  <div className="flex-1 h-[1px] bg-[var(--border-subtle)]" />
+                  <div className="flex flex-col items-center">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-muted)]">
+                      {row.label}
+                    </span>
+                    {row.detail && (
+                      <span className="text-[11px] text-[var(--text-secondary)] max-w-md">
+                        {row.detail}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 h-[1px] bg-[var(--border-subtle)]" />
+                </div>
+              );
+            }
+
+            // Narrative row
+            const persona = findPersonaById(row.personaId);
+            const color = persona?.colorHex || "#6366F1";
+            const targetPersona = row.targetPersonaId ? findPersonaById(row.targetPersonaId) : null;
 
             return (
               <div
-                key={ev.id || ev.seq}
-                className={`p-3.5 rounded-xl border transition-all text-xs space-y-2 ${
-                  isSpeaking
-                    ? 'border-indigo-500/50 bg-indigo-500/5 ring-1 ring-indigo-500/20'
-                    : 'border-black/5 dark:border-white/5 bg-white/40 dark:bg-white/2 hover:border-black/10 dark:hover:border-white/10'
-                }`}
+                key={row.id}
+                className="p-3.5 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] flex flex-col gap-2 transition-colors"
               >
-                {/* Persona Meta Row */}
+                {/* Header: Persona Avatar, Name, Stance Badge, Seq, Confidence */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => persona && onSelectPersona?.(persona)}
-                      className="flex items-center gap-2 hover:opacity-80 transition-opacity font-semibold"
+                    <div
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold"
+                      style={{
+                        backgroundColor: `${color}20`,
+                        color,
+                      }}
                     >
-                      <div
-                        className="w-6 h-6 rounded-lg flex items-center justify-center"
-                        style={{
-                          backgroundColor: `${persona?.colorHex || '#6366F1'}20`,
-                          color: persona?.colorHex || '#6366F1',
-                        }}
-                      >
-                        <GlyphComponent className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="text-gray-900 dark:text-gray-100">
-                        {persona?.name || ev.personaId}
-                      </span>
-                    </button>
+                      {persona?.name ? persona.name.charAt(0) : "M"}
+                    </div>
+                    <span className="text-xs font-semibold text-[var(--text-primary)]">
+                      {persona?.name || row.personaId}
+                    </span>
 
-                    {/* Stance towards target */}
-                    {ev.stance && (
-                      <Badge
-                        variant={
-                          ev.stance === 'AGREE'
-                            ? 'success'
-                            : ev.stance === 'CHALLENGE'
-                            ? 'danger'
-                            : 'warning'
-                        }
-                        size="xs"
+                    {/* Stance Badge */}
+                    {row.action && (
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium",
+                          row.action === "AGREE" && "bg-[var(--status-low)]/10 text-[var(--status-low)]",
+                          row.action === "CHALLENGE" && "bg-[var(--status-urgent)]/10 text-[var(--status-urgent)]",
+                          row.action === "CONCEDE" && "bg-[var(--status-medium)]/10 text-[var(--status-medium)]"
+                        )}
                       >
-                        {ev.stance} {targetPersona ? `→ ${targetPersona.name}` : ''}
-                      </Badge>
+                        {row.action === "AGREE" && <Check size={10} />}
+                        {row.action === "CHALLENGE" && <Zap size={10} />}
+                        {row.action === "CONCEDE" && <Hand size={10} />}
+                        <span>
+                          {row.action}
+                          {targetPersona && ` → ${targetPersona.name}`}
+                        </span>
+                      </span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 text-gray-400 font-mono text-[10px]">
-                    {ev.confidence !== undefined && (
-                      <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-300">
-                        {ev.confidence}% Conf
-                      </span>
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-[var(--text-muted)]">
+                    {row.confidence !== undefined && (
+                      <span>{row.confidence}%</span>
                     )}
-                    <span>#{ev.seq}</span>
+                    {row.seq !== undefined && <span>#{row.seq}</span>}
                   </div>
                 </div>
 
-                {/* Statement text */}
-                <p className="text-gray-700 dark:text-gray-200 leading-relaxed font-sans">
-                  {ev.summary}
-                </p>
-
-                {/* Collapsible Reasoning */}
-                {ev.fullText && ev.fullText !== ev.summary && (
-                  <div className="pt-1">
-                    <button
-                      type="button"
-                      onClick={() => toggleExpand(ev.id)}
-                      className="inline-flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
-                    >
-                      <span>{isExpanded ? 'Hide deep reasoning' : 'View full rationale'}</span>
-                      {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </button>
-
-                    {isExpanded && (
-                      <div className="mt-2 p-3 rounded-lg bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 text-[11px] text-gray-600 dark:text-gray-300 leading-relaxed font-mono whitespace-pre-wrap animate-fade-in">
-                        {ev.fullText}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* Message Body with Safe Markdown */}
+                <div className="text-xs text-[var(--text-secondary)] leading-relaxed prose prose-invert max-w-none">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeSanitize]}
+                  >
+                    {row.content}
+                  </ReactMarkdown>
+                </div>
               </div>
             );
           })
         )}
-        <div ref={bottomSentinelRef} />
       </div>
 
-      {/* Jump to Latest Floating Pill */}
-      {userScrolledUp && (
+      {/* "Jump to Latest" Pill */}
+      {isScrolledUp && (
         <button
-          type="button"
           onClick={scrollToBottom}
-          className="absolute bottom-4 right-4 z-20 px-3 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg text-xs font-semibold flex items-center gap-1.5 transition-all animate-bounce"
+          className="absolute bottom-4 right-4 z-20 px-3 py-1.5 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] text-xs font-medium flex items-center gap-1.5 shadow-none animate-spring-scale"
         >
-          <ArrowDown className="w-3.5 h-3.5" />
-          <span>Jump to Latest</span>
+          <ArrowDown size={13} />
+          <span>Jump to latest</span>
         </button>
       )}
     </div>

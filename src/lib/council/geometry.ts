@@ -192,3 +192,69 @@ export function validateLayoutNonOverlapping(
   }
   return true;
 }
+
+export type OutwardLabelAnchor = 'top' | 'bottom' | 'left' | 'right' | 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+
+/**
+ * Computes the outward direction for a seat's label based on its angular position.
+ */
+export function computeOutwardLabelAnchor(angleDeg: number): OutwardLabelAnchor {
+  const norm = ((angleDeg % 360) + 360) % 360;
+  if (norm >= 337.5 || norm < 22.5) return 'right';
+  if (norm >= 22.5 && norm < 67.5) return 'bottom-right';
+  if (norm >= 67.5 && norm < 112.5) return 'bottom';
+  if (norm >= 112.5 && norm < 157.5) return 'bottom-left';
+  if (norm >= 157.5 && norm < 202.5) return 'left';
+  if (norm >= 202.5 && norm < 247.5) return 'top-left';
+  if (norm >= 247.5 && norm < 292.5) return 'top';
+  return 'top-right';
+}
+
+export interface BubbleAnchor {
+  x: number;
+  y: number;
+  candidateIndex: number;
+}
+
+/**
+ * Computes speech bubble anchor candidate positions pulled inward from the seat toward center,
+ * ensuring no collision with the stage boundary.
+ */
+export function computeSpeechBubbleAnchor(
+  seat: { x: number; y: number },
+  center: { x: number; y: number },
+  tableSize = 640
+): BubbleAnchor {
+  // Candidate 1: 35% pulled toward center
+  // Candidate 2: 50% pulled toward center
+  // Candidate 3: 20% pulled toward center
+  const candidates = [
+    {
+      x: seat.x + (center.x - seat.x) * 0.35,
+      y: seat.y + (center.y - seat.y) * 0.35,
+    },
+    {
+      x: seat.x + (center.x - seat.x) * 0.5,
+      y: seat.y + (center.y - seat.y) * 0.5,
+    },
+    {
+      x: seat.x + (center.x - seat.x) * 0.2,
+      y: seat.y + (center.y - seat.y) * 0.2,
+    },
+  ];
+
+  const padding = 40;
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    if (
+      c.x >= padding &&
+      c.x <= tableSize - padding &&
+      c.y >= padding &&
+      c.y <= tableSize - padding
+    ) {
+      return { x: Math.round(c.x), y: Math.round(c.y), candidateIndex: i };
+    }
+  }
+
+  return { x: Math.round(candidates[0].x), y: Math.round(candidates[0].y), candidateIndex: 0 };
+}

@@ -1,539 +1,190 @@
+/* ============================================================
+   The Council — Global Design System
+   Origin: AnshX01/Atlas (frontend/src/styles/globals.css)
+   Flat, borderless, shadowless, Inter-driven monochrome
+   ============================================================ */
+
+@import "../styles/animations.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ==========================================================================
-   DESIGN TOKENS - Apple Monterey Glassmorphic Design System
-   All design tokens (colors, blur, radii, shadows, spacing, easing) defined as CSS variables
-   ========================================================================== */
-
+/* ── CSS Design Tokens ──────────────────────────────────────── */
 :root {
-  /* --- Colors: Light Mode --- */
-  --bg-app: #f4f5f9;
-  --bg-gradient-from: #f8f9fc;
-  --bg-gradient-to: #eef0f7;
-  
-  --foreground: #1c1d22;
-  --foreground-secondary: #4a4d57;
-  --foreground-muted: #747885;
-  --foreground-faint: #9ea3b0;
+  /* Light Mode */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --bg-glass: rgba(255, 255, 255, 0.7);
 
-  /* Glass Panels (Monterey Light) */
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-bg-elevated: rgba(255, 255, 255, 0.86);
-  --glass-bg-subtle: rgba(255, 255, 255, 0.45);
-  --glass-bg-hover: rgba(255, 255, 255, 0.92);
-  --glass-bg-active: rgba(255, 255, 255, 0.98);
+  --text-primary: #000000;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
 
-  /* Glass Borders (1px white / soft luminance highlight) */
-  --glass-border: rgba(255, 255, 255, 0.65);
-  --glass-border-subtle: rgba(0, 0, 0, 0.06);
-  --glass-border-strong: rgba(0, 0, 0, 0.12);
-  --glass-inner-bevel: inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+  --border-default: rgba(0, 0, 0, 0.08);
+  --border-subtle: rgba(0, 0, 0, 0.04);
 
-  /* Single Restrained Accent: Monterey Refined Royal Indigo/Blue */
-  --accent: #4f46e5;
-  --accent-rgb: 79, 70, 229;
-  --accent-hover: #4338ca;
-  --accent-subtle: rgba(79, 70, 229, 0.08);
-  --accent-subtle-hover: rgba(79, 70, 229, 0.14);
-  --accent-border: rgba(79, 70, 229, 0.25);
-  --accent-foreground: #ffffff;
-  --accent-glow: 0 0 24px -2px rgba(79, 70, 229, 0.25);
+  --accent: #18181b;
+  --accent-hover: #09090b;
+  --accent-glow: rgba(0, 0, 0, 0.1);
 
-  /* Semantic Feedback Tints */
-  --success: #059669;
-  --success-bg: rgba(5, 150, 105, 0.09);
-  --success-border: rgba(5, 150, 105, 0.25);
-  --success-text: #047857;
+  --status-urgent: #ef4444;
+  --status-high: #f97316;
+  --status-medium: #eab308;
+  --status-low: #22c55e;
 
-  --warning: #d97706;
-  --warning-bg: rgba(217, 119, 6, 0.09);
-  --warning-border: rgba(217, 119, 6, 0.25);
-  --warning-text: #b45309;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-glass: none;
+  --shadow-glow: none;
 
-  --danger: #dc2626;
-  --danger-bg: rgba(220, 38, 38, 0.09);
-  --danger-border: rgba(220, 38, 38, 0.25);
-  --danger-text: #b91c1c;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+  --radius-xl: 20px;
 
-  --info: #0284c7;
-  --info-bg: rgba(2, 132, 199, 0.09);
-  --info-border: rgba(2, 132, 199, 0.25);
-  --info-text: #0369a1;
+  --transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  --font-sans: "Inter", sans-serif;
 
-  /* Ambient Mesh Orbs (Behind Glass) */
-  --orb-1: rgba(99, 102, 241, 0.09);
-  --orb-2: rgba(147, 197, 253, 0.12);
-  --orb-3: rgba(192, 132, 252, 0.07);
-
-  /* --- Blur Tokens (Monterey Backdrop Filter) --- */
-  --blur-glass: blur(24px) saturate(190%);
-  --blur-modal: blur(36px) saturate(210%);
-  --blur-subtle: blur(12px) saturate(150%);
-  --blur-header: blur(20px) saturate(180%);
-
-  /* --- Radii Tokens (Generous Rounded Corners: 12px-22px) --- */
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 22px;
-  --radius-2xl: 28px;
-  --radius-full: 9999px;
-
-  /* --- Layered macOS Shadows --- */
-  --shadow-glass-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 0 0 1px var(--glass-border-subtle);
-  --shadow-glass-sm: 0 3px 8px -1px rgba(0, 0, 0, 0.05), 0 1px 3px 0 rgba(0, 0, 0, 0.03), 0 0 0 1px var(--glass-border-subtle);
-  --shadow-glass-md: 0 10px 25px -4px rgba(0, 0, 0, 0.07), 0 4px 10px -2px rgba(0, 0, 0, 0.03), 0 0 0 1px var(--glass-border-subtle);
-  --shadow-glass-lg: 0 20px 40px -10px rgba(0, 0, 0, 0.10), 0 8px 16px -4px rgba(0, 0, 0, 0.04), 0 0 0 1px var(--glass-border-subtle);
-  --shadow-glass-modal: 0 30px 70px -15px rgba(0, 0, 0, 0.20), 0 12px 24px -6px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--glass-border);
-  --shadow-hover-lift: 0 14px 30px -4px rgba(0, 0, 0, 0.10), 0 6px 12px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px var(--glass-border-strong);
-
-  /* --- Spacing Tokens (8px Grid Hierarchy) --- */
-  --space-0-5: 4px;
-  --space-1: 8px;
-  --space-1-5: 12px;
-  --space-2: 16px;
-  --space-2-5: 20px;
-  --space-3: 24px;
-  --space-4: 32px;
-  --space-5: 40px;
-  --space-6: 48px;
-  --space-8: 64px;
-  --space-10: 80px;
-
-  /* --- Motion & Spring Easing Tokens (150ms-300ms) --- */
-  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --duration-fast: 150ms;
-  --duration-base: 220ms;
-  --duration-slow: 300ms;
-
-  /* Backward compatibility variables for existing code */
-  --background: var(--bg-app);
-  --card-bg: var(--glass-bg);
-  --card-border: var(--glass-border-subtle);
-  --muted: var(--foreground-muted);
-  --accent-light: var(--accent-subtle);
+  /* Persona Chroma Tokens (Origin: src/config/personas/*.json) */
+  --persona-moderator: #6366F1;
+  --persona-skeptic: #0EA5E9;
+  --persona-optimist: #F59E0B;
+  --persona-ethicist: #8B5CF6;
+  --persona-pragmatist: #10B981;
+  --persona-systems_thinker: #3B82F6;
+  --persona-systems-thinker: #3B82F6;
+  --persona-historian: #D97706;
+  --persona-humanist: #EC4899;
+  --persona-contrarian: #EF4444;
 }
-
-/* ==========================================================================
-   Dark Mode (Polished Monterey Dark Chamber)
-   ========================================================================== */
 
 .dark {
-  /* --- Colors: Dark Mode --- */
-  --bg-app: #08090d;
-  --bg-gradient-from: #0c0e14;
-  --bg-gradient-to: #06070a;
-  
-  --foreground: #f3f4f8;
-  --foreground-secondary: #c0c4ce;
-  --foreground-muted: #848a99;
-  --foreground-faint: #525766;
+  /* Dark Mode — Atlas Black */
+  --bg-primary: #000000;
+  --bg-secondary: #111113;
+  --bg-tertiary: #18181b;
+  --bg-glass: rgba(17, 17, 19, 0.8);
 
-  /* Glass Panels (Monterey Dark) */
-  --glass-bg: rgba(18, 20, 29, 0.65);
-  --glass-bg-elevated: rgba(24, 27, 40, 0.78);
-  --glass-bg-subtle: rgba(14, 16, 24, 0.50);
-  --glass-bg-hover: rgba(28, 32, 48, 0.75);
-  --glass-bg-active: rgba(34, 38, 56, 0.85);
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
 
-  /* Glass Borders (1px white at ~10-20% opacity as requested) */
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-border-subtle: rgba(255, 255, 255, 0.08);
-  --glass-border-strong: rgba(255, 255, 255, 0.20);
-  --glass-inner-bevel: inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.04);
 
-  /* Restrained Dark Mode Accent */
-  --accent: #6366f1;
-  --accent-rgb: 99, 102, 241;
-  --accent-hover: #818cf8;
-  --accent-subtle: rgba(99, 102, 241, 0.14);
-  --accent-subtle-hover: rgba(99, 102, 241, 0.22);
-  --accent-border: rgba(99, 102, 241, 0.35);
-  --accent-foreground: #ffffff;
-  --accent-glow: 0 0 28px -3px rgba(99, 102, 241, 0.35);
+  --accent: #e4e4e7;
+  --accent-hover: #ffffff;
+  --accent-glow: rgba(255, 255, 255, 0.1);
 
-  /* Semantic Feedback Tints in Dark */
-  --success: #10b981;
-  --success-bg: rgba(16, 185, 129, 0.12);
-  --success-border: rgba(16, 185, 129, 0.28);
-  --success-text: #34d399;
-
-  --warning: #f59e0b;
-  --warning-bg: rgba(245, 158, 11, 0.12);
-  --warning-border: rgba(245, 158, 11, 0.28);
-  --warning-text: #fbbf24;
-
-  --danger: #ef4444;
-  --danger-bg: rgba(239, 68, 68, 0.12);
-  --danger-border: rgba(239, 68, 68, 0.28);
-  --danger-text: #f87171;
-
-  --info: #38bdf8;
-  --info-bg: rgba(56, 189, 248, 0.12);
-  --info-border: rgba(56, 189, 248, 0.28);
-  --info-text: #7dd3fc;
-
-  /* Ambient Mesh Orbs (Dark Mode Glow) */
-  --orb-1: rgba(99, 102, 241, 0.13);
-  --orb-2: rgba(56, 189, 248, 0.08);
-  --orb-3: rgba(168, 85, 247, 0.09);
-
-  /* Layered Shadows (Dark Mode Depth) */
-  --shadow-glass-xs: 0 1px 3px 0 rgba(0, 0, 0, 0.35), 0 0 0 1px var(--glass-border-subtle);
-  --shadow-glass-sm: 0 4px 12px -2px rgba(0, 0, 0, 0.40), 0 2px 4px 0 rgba(0, 0, 0, 0.25), 0 0 0 1px var(--glass-border-subtle);
-  --shadow-glass-md: 0 12px 30px -4px rgba(0, 0, 0, 0.55), 0 4px 12px -2px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--glass-border-subtle);
-  --shadow-glass-lg: 0 24px 50px -10px rgba(0, 0, 0, 0.65), 0 8px 20px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--glass-border);
-  --shadow-glass-modal: 0 40px 90px -15px rgba(0, 0, 0, 0.85), 0 16px 36px -8px rgba(0, 0, 0, 0.60), 0 0 0 1px var(--glass-border-strong);
-  --shadow-hover-lift: 0 18px 36px -4px rgba(0, 0, 0, 0.65), 0 8px 16px -2px rgba(0, 0, 0, 0.40), 0 0 0 1px var(--glass-border-strong);
-
-  /* Compatibility */
-  --background: var(--bg-app);
-  --card-bg: var(--glass-bg);
-  --card-border: var(--glass-border-subtle);
-  --muted: var(--foreground-muted);
-  --accent-light: var(--accent-subtle);
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-glass: none;
+  --shadow-glow: none;
 }
 
-/* ==========================================================================
-   Base & Typography
-   ========================================================================== */
-
-* {
+/* ── Reset & Base ───────────────────────────────────────────── */
+*, *::before, *::after {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 html {
-  color-scheme: light dark;
-}
-
-html.dark {
-  color-scheme: dark;
-}
-
-body {
-  background-color: var(--bg-app);
-  color: var(--foreground);
-  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Icons', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  letter-spacing: -0.011em;
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+}
+
+body {
+  font-family: var(--font-sans, "Inter"), system-ui, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  transition: background-color var(--transition-normal), color var(--transition-normal);
   min-height: 100vh;
-  position: relative;
-  transition: background-color var(--duration-base) var(--ease-out), color var(--duration-base) var(--ease-out);
 }
 
-/* Headings: Tight letter-spacing as requested */
-h1, h2, h3, h4, h5, h6 {
-  letter-spacing: -0.025em;
-  text-wrap: balance;
+/* ── Typography Scale ───────────────────────────────────────── */
+h1 { font-size: 2rem;    font-weight: 700; letter-spacing: -0.03em; line-height: 1.2; }
+h2 { font-size: 1.5rem;  font-weight: 600; letter-spacing: -0.02em; line-height: 1.3; }
+h3 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.4; }
+h4 { font-size: 1rem;    font-weight: 600; line-height: 1.5; }
+p  { color: var(--text-secondary); line-height: 1.7; }
+
+/* ── Tonal Surfaces (Flat, Zero Outlines by Default) ────────── */
+.glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: none;
+  box-shadow: none;
 }
 
-/* Accessible focus visible outlines */
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: none;
+  border-radius: var(--radius-xl);
+  box-shadow: none;
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Selection ──────────────────────────────────────────────── */
+::selection {
+  background: var(--accent-glow);
+  color: var(--text-primary);
+}
+
+/* ── Skeleton Shimmer (No Blocking Spinners) ─────────────────── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 25%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
   border-radius: var(--radius-sm);
 }
 
-/* ==========================================================================
-   Ambient macOS Monterey Background
-   ========================================================================== */
-
-.ambient-background {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
-.ambient-orb-1 {
-  position: absolute;
-  top: -15%;
-  left: 20%;
-  width: 55vw;
-  height: 55vw;
-  max-width: 800px;
-  max-height: 800px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--orb-1) 0%, transparent 70%);
-  filter: blur(80px);
-  animation: floatOrb 24s ease-in-out infinite alternate;
+/* ── Motion & Interactivity ─────────────────────────────────── */
+a, button, [role="button"] {
+  transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.ambient-orb-2 {
-  position: absolute;
-  top: 35%;
-  right: -10%;
-  width: 50vw;
-  height: 50vw;
-  max-width: 700px;
-  max-height: 700px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--orb-2) 0%, transparent 70%);
-  filter: blur(90px);
-  animation: floatOrbReverse 28s ease-in-out infinite alternate;
+button:active:not(:disabled),
+[role="button"]:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
-.ambient-orb-3 {
-  position: absolute;
-  bottom: -15%;
-  left: 5%;
-  width: 45vw;
-  height: 45vw;
-  max-width: 600px;
-  max-height: 600px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--orb-3) 0%, transparent 70%);
-  filter: blur(85px);
-  animation: floatOrb 32s ease-in-out infinite alternate;
+.card-hover {
+  transition: transform var(--transition-fast);
 }
 
-@keyframes floatOrb {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(30px, -20px) scale(1.05);
-  }
-  100% {
-    transform: translate(-20px, 25px) scale(0.95);
-  }
+.card-hover:hover {
+  transform: translateY(-1px);
 }
 
-@keyframes floatOrbReverse {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(-30px, 20px) scale(0.96);
-  }
-  100% {
-    transform: translate(25px, -30px) scale(1.04);
-  }
-}
-
-/* ==========================================================================
-   Monterey-style Glassmorphism Utility Classes
-   ========================================================================== */
-
-.glass-panel {
-  background-color: var(--glass-bg);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-glass-md), var(--glass-inner-bevel);
-  border-radius: var(--radius-lg);
-  transition: transform var(--duration-base) var(--ease-spring),
-              box-shadow var(--duration-base) var(--ease-spring),
-              background-color var(--duration-base) var(--ease-out),
-              border-color var(--duration-base) var(--ease-out);
-}
-
-.glass-panel-elevated {
-  background-color: var(--glass-bg-elevated);
-  backdrop-filter: var(--blur-modal);
-  -webkit-backdrop-filter: var(--blur-modal);
-  border: 1px solid var(--glass-border-strong);
-  box-shadow: var(--shadow-glass-modal), var(--glass-inner-bevel);
-  border-radius: var(--radius-xl);
-}
-
-.glass-panel-subtle {
-  background-color: var(--glass-bg-subtle);
-  backdrop-filter: var(--blur-subtle);
-  -webkit-backdrop-filter: var(--blur-subtle);
-  border: 1px solid var(--glass-border-subtle);
-  box-shadow: var(--shadow-glass-xs);
-  border-radius: var(--radius-md);
-}
-
-.glass-interactive {
-  cursor: pointer;
-}
-
-.glass-interactive:hover {
-  background-color: var(--glass-bg-hover);
-  border-color: var(--glass-border-strong);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-hover-lift), var(--glass-inner-bevel);
-}
-
-.glass-interactive:active {
-  background-color: var(--glass-bg-active);
-  transform: translateY(0);
-  box-shadow: var(--shadow-glass-sm);
-}
-
-/* Header Frosted Bar */
-.glass-header {
-  background-color: var(--glass-bg);
-  backdrop-filter: var(--blur-header);
-  -webkit-backdrop-filter: var(--blur-header);
-  border-bottom: 1px solid var(--glass-border);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
-}
-
-/* Restrained Council Glow */
-.council-glow {
-  box-shadow: 0 0 35px -5px rgba(var(--accent-rgb), 0.22), var(--shadow-glass-lg);
-}
-
-/* ==========================================================================
-   macOS Window Control Dots
-   ========================================================================== */
-
-.mac-traffic-lights {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.mac-traffic-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  display: inline-block;
-  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.2);
-}
-
-.mac-traffic-dot-close {
-  background-color: #ff5f56;
-}
-
-.mac-traffic-dot-minimize {
-  background-color: #ffbd2e;
-}
-
-.mac-traffic-dot-expand {
-  background-color: #27c93f;
-}
-
-/* ==========================================================================
-   Custom macOS-style Scrollbars
-   ========================================================================== */
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(140, 145, 160, 0.3);
-  border-radius: var(--radius-full);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(140, 145, 160, 0.55);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-/* ==========================================================================
-   Animations & Keyframes
-   ========================================================================== */
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes scaleUp {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-.animate-fade-in {
-  animation: fadeIn var(--duration-base) var(--ease-out) forwards;
-}
-
-.animate-slide-up {
-  animation: slideUp var(--duration-slow) var(--ease-spring) forwards;
-}
-
-.animate-scale-up {
-  animation: scaleUp var(--duration-slow) var(--ease-spring) forwards;
-}
-
-.skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.04) 25%,
-    rgba(255, 255, 255, 0.12) 37%,
-    rgba(255, 255, 255, 0.04) 63%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.8s infinite;
-}
-
-:not(.dark) .skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0.04) 25%,
-    rgba(0, 0, 0, 0.08) 37%,
-    rgba(0, 0, 0, 0.04) 63%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.8s infinite;
-}
-
-/* Respect prefers-reduced-motion as required */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  ::before,
-  ::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-  .ambient-orb-1,
-  .ambient-orb-2,
-  .ambient-orb-3 {
-    animation: none !important;
-  }
+/* ── Section Labels (Atlas 10px uppercase tracking-widest) ──── */
+.atlas-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
 }

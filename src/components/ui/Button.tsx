@@ -1,108 +1,99 @@
-'use client';
+/**
+ * Origin: AnshX01/Atlas (frontend/src/components/ui/Button.tsx)
+ * Apple-tier tonal button with spring press physics and size variants.
+ */
 
-import React, { useRef, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+"use client";
 
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'glass' | 'ghost' | 'danger';
-  size?: 'xs' | 'sm' | 'md' | 'lg';
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { type ButtonHTMLAttributes, forwardRef } from "react";
+import { Spinner } from "@/components/ui/Spinner";
+
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonSize = "sm" | "md" | "lg";
+
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   isLoading?: boolean;
-  loadingText?: string;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
-  debounceMs?: number;
 }
 
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+const variantStyles: Record<ButtonVariant, string> = {
+  primary: `
+    bg-[var(--accent)] text-[var(--bg-primary)] font-medium
+    hover:bg-[var(--accent-hover)]
+  `,
+  secondary: `
+    bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium
+    hover:bg-[var(--bg-tertiary)]
+  `,
+  ghost: `
+    bg-transparent text-[var(--text-secondary)] font-medium
+    hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]
+  `,
+  danger: `
+    bg-[var(--bg-tertiary)] text-[var(--text-secondary)] font-medium
+    hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]
+  `,
+};
+
+const sizeStyles: Record<ButtonSize, string> = {
+  sm: "h-7 px-3 text-xs rounded-lg gap-1.5",
+  md: "h-9 px-4 text-sm rounded-xl gap-2",
+  lg: "h-11 px-6 text-base rounded-xl gap-2.5",
+};
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
     {
-      className,
-      variant = 'secondary',
-      size = 'md',
+      variant = "primary",
+      size = "md",
       isLoading = false,
-      loadingText,
       leftIcon,
       rightIcon,
-      disabled,
+      className,
       children,
+      disabled,
       onClick,
-      debounceMs = 400,
-      type = 'button',
       ...props
     },
     ref
   ) => {
-    const lastClickRef = useRef<number>(0);
-
-    const handleClick = useCallback(
-      (e: React.MouseEvent<HTMLButtonElement>) => {
-        if (disabled || isLoading) {
-          e.preventDefault();
-          return;
-        }
-
-        const now = Date.now();
-        if (debounceMs > 0 && lastClickRef.current > 0 && now - lastClickRef.current < debounceMs) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-
-        lastClickRef.current = now;
-        onClick?.(e);
-      },
-      [disabled, isLoading, debounceMs, onClick]
-    );
-
-    const baseStyles =
-      'inline-flex items-center justify-center font-medium select-none transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none active:scale-[0.98]';
-
-    const variantStyles = {
-      primary:
-        'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-sm hover:shadow-md border border-indigo-500/30',
-      secondary:
-        'bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/15 active:bg-gray-100 dark:active:bg-white/20 text-gray-800 dark:text-gray-100 border border-gray-200/80 dark:border-white/15 shadow-xs',
-      glass:
-        'bg-white/60 dark:bg-white/[0.08] backdrop-blur-md hover:bg-white/80 dark:hover:bg-white/[0.14] active:bg-white/90 dark:active:bg-white/[0.18] text-gray-800 dark:text-gray-100 border border-white/40 dark:border-white/15 shadow-sm',
-      ghost:
-        'bg-transparent hover:bg-gray-100/70 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white',
-      danger:
-        'bg-red-600/90 hover:bg-red-600 text-white shadow-sm border border-red-500/30',
-    };
-
-    const sizeStyles = {
-      xs: 'text-[11px] px-2.5 py-1 rounded-[8px] gap-1.5 h-7',
-      sm: 'text-xs px-3 py-1.5 rounded-[10px] gap-1.5 h-8',
-      md: 'text-xs sm:text-sm px-4 py-2 rounded-[12px] gap-2 h-9 sm:h-10',
-      lg: 'text-sm sm:text-base px-6 py-2.5 rounded-[14px] gap-2.5 h-11 sm:h-12',
-    };
-
     return (
-      <button
+      <motion.button
+        type={props.type || "button"}
         ref={ref}
-        type={type}
-        className={cn(baseStyles, variantStyles[variant], sizeStyles[size], className)}
+        whileTap={disabled || isLoading ? undefined : { scale: 0.97 }}
+        transition={{ duration: 0.1 }}
+        className={cn(
+          "inline-flex items-center justify-center select-none",
+          "transition-all duration-150 ease-out cursor-pointer",
+          "focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2",
+          "disabled:opacity-40 disabled:cursor-not-allowed",
+          variantStyles[variant],
+          sizeStyles[size],
+          (isLoading || disabled) && "opacity-50 cursor-not-allowed",
+          className
+        )}
         disabled={disabled || isLoading}
+        aria-disabled={disabled || isLoading}
         aria-busy={isLoading}
-        onClick={handleClick}
-        {...props}
+        onClick={onClick}
+        {...(props as any)}
       >
         {isLoading ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-hidden="true" />
-            <span>{loadingText || children}</span>
-          </>
+          <Spinner size="sm" />
         ) : (
-          <>
-            {leftIcon && <span className="shrink-0" aria-hidden="true">{leftIcon}</span>}
-            <span>{children}</span>
-            {rightIcon && <span className="shrink-0" aria-hidden="true">{rightIcon}</span>}
-          </>
+          leftIcon
         )}
-      </button>
+        {children}
+        {!isLoading && rightIcon}
+      </motion.button>
     );
   }
 );
 
-Button.displayName = 'Button';
+Button.displayName = "Button";

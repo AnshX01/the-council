@@ -1,83 +1,81 @@
-'use client';
+/**
+ * Origin: AnshX01/Atlas (frontend/src/components/ui/Badge.tsx)
+ * 11px tonal pill badges with status dot support, size variants, and neutral/accent fallbacks.
+ */
 
-import React from 'react';
-import { cn } from '@/lib/utils';
+"use client";
 
-export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'default' | 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'accent';
-  size?: 'xs' | 'sm' | 'md';
+import React from "react";
+import { cn } from "@/lib/utils";
+
+export type BadgeVariant =
+  | "default"
+  | "urgent"
+  | "high"
+  | "medium"
+  | "low"
+  | "outline"
+  | "neutral"
+  | "accent";
+
+export interface BadgeProps {
+  children: React.ReactNode;
+  variant?: BadgeVariant;
+  size?: "xs" | "sm" | "md";
+  className?: string;
   dot?: boolean;
-  icon?: React.ReactNode;
 }
 
-export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
-  (
-    {
-      className,
-      variant = 'default',
-      size = 'sm',
-      dot = false,
-      icon,
-      children,
-      ...props
-    },
-    ref
-  ) => {
-    const variantStyles = {
-      default:
-        'bg-gray-100/80 dark:bg-white/10 text-gray-700 dark:text-gray-200 border-gray-200/80 dark:border-white/15',
-      neutral:
-        'bg-gray-100/70 dark:bg-gray-800/60 text-gray-600 dark:text-gray-400 border-gray-200/70 dark:border-gray-700/60',
-      success:
-        'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25',
-      warning:
-        'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25',
-      danger:
-        'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/25',
-      info:
-        'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25',
-      accent:
-        'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30',
-    };
+const variantStyles: Record<BadgeVariant, string> = {
+  default: "bg-[var(--bg-tertiary)] text-[var(--text-secondary)]",
+  neutral: "bg-[var(--bg-tertiary)] text-[var(--text-secondary)]",
+  accent:  "bg-[var(--accent)] text-[var(--bg-primary)] font-medium",
+  urgent:  "bg-[var(--bg-tertiary)] text-[var(--status-urgent)] font-semibold",
+  high:    "bg-[var(--bg-tertiary)] text-[var(--status-high)] font-medium",
+  medium:  "bg-[var(--bg-tertiary)] text-[var(--status-medium)] font-medium",
+  low:     "bg-[var(--bg-tertiary)] text-[var(--status-low)] font-medium",
+  outline: "bg-transparent text-[var(--text-muted)] border border-[var(--border-subtle)]",
+};
 
-    const dotColors = {
-      default: 'bg-gray-400',
-      neutral: 'bg-gray-400',
-      success: 'bg-emerald-500 animate-pulse',
-      warning: 'bg-amber-500',
-      danger: 'bg-red-500',
-      info: 'bg-sky-500',
-      accent: 'bg-indigo-500 animate-pulse',
-    };
+const dotColors: Record<BadgeVariant, string> = {
+  default: "bg-[var(--text-muted)]",
+  neutral: "bg-[var(--text-muted)]",
+  accent:  "bg-[var(--bg-primary)]",
+  urgent:  "bg-[var(--status-urgent)]",
+  high:    "bg-[var(--status-high)]",
+  medium:  "bg-[var(--status-medium)]",
+  low:     "bg-[var(--status-low)]",
+  outline: "bg-[var(--text-muted)]",
+};
 
-    const sizeStyles = {
-      xs: 'text-[10px] px-2 py-0.5 gap-1 rounded-full font-mono',
-      sm: 'text-[11px] px-2.5 py-0.5 gap-1.5 rounded-full font-medium',
-      md: 'text-xs px-3 py-1 gap-1.5 rounded-full font-medium',
-    };
+const sizeStyles: Record<"xs" | "sm" | "md", string> = {
+  xs: "px-1.5 py-0.5 text-[10px]",
+  sm: "px-2 py-0.5 text-[11px]",
+  md: "px-2.5 py-1 text-xs",
+};
 
-    return (
-      <span
-        ref={ref}
-        className={cn(
-          'inline-flex items-center select-none border backdrop-blur-xs transition-colors',
-          variantStyles[variant],
-          sizeStyles[size],
-          className
-        )}
-        {...props}
-      >
-        {dot && (
-          <span
-            className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotColors[variant])}
-            aria-hidden="true"
-          />
-        )}
-        {icon && <span className="shrink-0 flex items-center">{icon}</span>}
-        <span>{children}</span>
-      </span>
-    );
-  }
-);
-
-Badge.displayName = 'Badge';
+export function Badge({
+  children,
+  variant = "default",
+  size = "sm",
+  className,
+  dot,
+}: BadgeProps) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5",
+        "rounded-full font-medium tracking-wide",
+        "select-none whitespace-nowrap",
+        sizeStyles[size],
+        variantStyles[variant],
+        className
+      )}
+    >
+      {dot && (
+        <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", dotColors[variant])} />
+      )}
+      {children}
+    </span>
+  );
+}
