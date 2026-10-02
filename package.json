@@ -20,7 +20,9 @@
     "test:all": "vitest run && playwright test",
     "test:live": "vitest run tests/integration/liveGemini.test.ts",
     "diag:engine": "npx tsx scripts/diag-engine.ts",
-    "clean-test-sessions": "npx tsx scripts/clean-test-sessions.ts"
+    "clean-test-sessions": "npx tsx scripts/clean-test-sessions.ts",
+    "build:android": "powershell -ExecutionPolicy Bypass -File android/build.ps1",
+    "install:android": "powershell -ExecutionPolicy Bypass -File android/install.ps1"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

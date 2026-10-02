@@ -21,12 +21,27 @@ const jetBrainsMono = JetBrains_Mono({
   display: 'swap',
 });
 
+export const viewport = {
+  themeColor: '#000000',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
   title: 'The Council | Autonomous Multi-Agent Deliberation Chamber',
   description:
     'A council of 8 AI personas deliberates, debates, shifts positions, and arrives at unanimous consensus or honest dissent on complex dilemmas.',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'The Council',
+  },
   icons: {
-    icon: '/favicon.ico',
+    icon: '/icon.png',
+    apple: '/icon.png',
   },
 };
 

@@ -42,3 +42,8 @@ next-env.d.ts
 
 # Screenshots
 /ss/
+
+# Android intermediate build
+android/build/obj/
+android/build/gen/
+android/build/bin/*-aligned.apk
