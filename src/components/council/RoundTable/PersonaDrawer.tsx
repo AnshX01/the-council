@@ -22,6 +22,7 @@ import {
   Shield,
   EyeOff,
 } from "lucide-react";
+import { PersonaGlyph } from "@/components/council/PersonaGlyph";
 import { PersonaProfile } from "@/types/persona";
 import { OpeningPosition, RatificationVote } from "@/types/session";
 import { cn } from "@/lib/utils";
@@ -44,18 +45,6 @@ export interface PersonaDrawerProps {
   }>;
 }
 
-const GLYPH_MAP: Record<string, React.ElementType> = {
-  Crown,
-  Compass,
-  Sparkles,
-  Scale,
-  Hammer,
-  Network,
-  Hourglass,
-  Heart,
-  Flame,
-};
-
 export const PersonaDrawer: React.FC<PersonaDrawerProps> = ({
   persona,
   isOpen,
@@ -69,7 +58,6 @@ export const PersonaDrawer: React.FC<PersonaDrawerProps> = ({
 }) => {
   if (!persona) return null;
 
-  const GlyphComponent = GLYPH_MAP[persona.avatarGlyph] || Crown;
   const color = persona.colorHex || "#6366F1";
 
   return (
@@ -90,7 +78,7 @@ export const PersonaDrawer: React.FC<PersonaDrawerProps> = ({
                 className="w-12 h-12 rounded-2xl flex items-center justify-center bg-[var(--bg-tertiary)] flex-shrink-0"
                 style={{ color }}
               >
-                <GlyphComponent size={24} />
+                <PersonaGlyph persona={persona} size={24} />
               </div>
               <div className="flex flex-col">
                 <RadixDialog.Title className="text-base font-bold text-[var(--text-primary)]">

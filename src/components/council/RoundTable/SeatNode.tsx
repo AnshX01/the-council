@@ -8,17 +8,7 @@
 "use client";
 
 import React from "react";
-import {
-  Compass,
-  Sparkles,
-  Scale,
-  Hammer,
-  Network,
-  Hourglass,
-  Heart,
-  Flame,
-  Crown,
-} from "lucide-react";
+import { PersonaGlyph } from "@/components/council/PersonaGlyph";
 import { PersonaProfile } from "@/types/persona";
 import { RatificationVote } from "@/types/session";
 import { TABLE_CONSTANTS, computeOutwardLabelAnchor } from "@/lib/council/geometry";
@@ -44,18 +34,6 @@ export interface SeatNodeProps {
   onFocus?: () => void;
 }
 
-const GLYPH_MAP: Record<string, React.ElementType> = {
-  Crown,
-  Compass,
-  Sparkles,
-  Scale,
-  Hammer,
-  Network,
-  Hourglass,
-  Heart,
-  Flame,
-};
-
 export const SeatNode: React.FC<SeatNodeProps> = ({
   persona,
   x,
@@ -74,7 +52,6 @@ export const SeatNode: React.FC<SeatNodeProps> = ({
   onClick,
   onFocus,
 }) => {
-  const GlyphComponent = GLYPH_MAP[persona.avatarGlyph] || Crown;
   const color = persona.colorHex || (isModerator ? "#6366F1" : "#3B82F6");
 
   // Confidence ring geometry: normalized in 64x64 SVG space (r=28)
@@ -227,7 +204,12 @@ export const SeatNode: React.FC<SeatNodeProps> = ({
           )}
           style={{ color }}
         >
-          <GlyphComponent className={isModerator ? "w-5 h-5 sm:w-6 sm:h-6" : "w-4 h-4 sm:w-[18px] sm:h-[18px]"} strokeWidth={2} />
+          <PersonaGlyph
+            persona={persona}
+            personaId={persona.id}
+            className={isModerator ? "w-5 h-5 sm:w-6 sm:h-6" : "w-4 h-4 sm:w-[18px] sm:h-[18px]"}
+            strokeWidth={2}
+          />
         </div>
 
         {/* Moderator "CHAIR" Nameplate Badge */}
