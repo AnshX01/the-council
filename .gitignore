@@ -47,3 +47,4 @@ next-env.d.ts
 android/build/obj/
 android/build/gen/
 android/build/bin/*-aligned.apk
+android/assets/

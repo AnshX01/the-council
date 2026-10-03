@@ -11,6 +11,9 @@ $javac = "C:\Program Files\Java\jdk-25.0.2\bin\javac.exe"
 $jar = "C:\Program Files\Java\jdk-25.0.2\bin\jar.exe"
 $keystore = "C:\Android\.android\debug.keystore"
 
+Write-Host "=== 0. Preparing Standalone Web Assets ==="
+& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "prepare-assets.ps1")
+
 Write-Host "=== 1. Compiling Resources ==="
 & $aapt2 compile --dir "android\res" -o "android\build\obj\res.zip"
 
@@ -23,10 +26,11 @@ Write-Host "=== 2. Linking Resources and Manifest ==="
     "android\build\obj\res.zip"
 
 Write-Host "=== 3. Compiling Java Source ==="
+$javaSources = Get-ChildItem -Path "android\src" -Recurse -Filter "*.java" | Select-Object -ExpandProperty FullName
 & $javac --release 8 -cp $platform `
     -d "android\build\obj\classes" `
     "android\build\gen\com\thecouncil\app\R.java" `
-    "android\src\com\thecouncil\app\MainActivity.java"
+    $javaSources
 
 Write-Host "=== 4. Dexing with D8 ==="
 $classFiles = Get-ChildItem -Path "android\build\obj\classes" -Recurse -Filter "*.class" | Select-Object -ExpandProperty FullName
@@ -37,6 +41,12 @@ Copy-Item "android\build\obj\base.apk" "android\build\obj\unaligned.apk" -Force
 Push-Location "android\build\obj"
 try {
     & $jar uf "unaligned.apk" "classes.dex"
+} finally {
+    Pop-Location
+}
+Push-Location "android"
+try {
+    & $jar uf "build\obj\unaligned.apk" "assets"
 } finally {
     Pop-Location
 }

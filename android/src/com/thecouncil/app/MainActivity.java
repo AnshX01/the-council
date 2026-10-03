@@ -30,16 +30,17 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
     private static final String PREFS_NAME = "council_prefs";
     private static final String KEY_SERVER_URL = "server_url";
-    private static final String DEFAULT_USB_URL = "http://localhost:3000";
+    private static final String DEFAULT_STANDALONE_URL = "http://127.0.0.1:3000";
     private static final String DEFAULT_WIFI_URL = "http://192.168.1.21:3000";
 
+    private LocalCouncilServer mLocalServer;
     private WebView mWebView;
     private FrameLayout mContainer;
     private LinearLayout mErrorLayout;
     private ProgressBar mProgressBar;
     private TextView mErrorDetail;
     private String mCurrentUrl;
-    private boolean mAttemptedWifiFallback = false;
+    private boolean mAttemptedStandaloneFallback = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,11 +65,23 @@ public class MainActivity extends Activity {
             decor.setSystemUiVisibility(flags);
         }
 
+        // Start embedded on-device Standalone Server
+        mLocalServer = new LocalCouncilServer(this);
+        mLocalServer.start();
+
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        mCurrentUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_USB_URL);
+        mCurrentUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_STANDALONE_URL);
 
         setupViews();
         loadServerUrl(mCurrentUrl);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (mLocalServer != null) {
+            mLocalServer.stop();
+        }
+        super.onDestroy();
     }
 
     private void setupViews() {
@@ -128,7 +141,7 @@ public class MainActivity extends Activity {
                     .edit()
                     .putString(KEY_SERVER_URL, url)
                     .apply();
-                mAttemptedWifiFallback = false;
+                mAttemptedStandaloneFallback = false;
             }
 
             @Override
@@ -177,7 +190,7 @@ public class MainActivity extends Activity {
         mErrorLayout.addView(title);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Deliberation Chamber Offline");
+        subtitle.setText("Deliberation Chamber");
         subtitle.setTextColor(0xFF71717A);
         subtitle.setTextSize(14);
         subtitle.setGravity(Gravity.CENTER);
@@ -185,53 +198,43 @@ public class MainActivity extends Activity {
         mErrorLayout.addView(subtitle);
 
         mErrorDetail = new TextView(this);
-        mErrorDetail.setText("Cannot connect to server at:\n" + mCurrentUrl);
+        mErrorDetail.setText("Connecting to server at:\n" + mCurrentUrl);
         mErrorDetail.setTextColor(0xFFA1A1AA);
         mErrorDetail.setTextSize(13);
         mErrorDetail.setGravity(Gravity.CENTER);
         mErrorDetail.setPadding(0, 0, 0, 24);
         mErrorLayout.addView(mErrorDetail);
 
-        // USB connect button
-        Button btnUsb = new Button(this);
-        btnUsb.setText("Connect via USB (localhost:3000)");
-        btnUsb.setBackgroundColor(0xFF18181B);
-        btnUsb.setTextColor(0xFFE4E4E7);
-        btnUsb.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                loadServerUrl(DEFAULT_USB_URL);
+        // Standalone on-device button (Primary)
+        Button btnStandalone = new Button(this);
+        btnStandalone.setText("Run Standalone (On-Device Local Engine)");
+        btnStandalone.setBackgroundColor(0xFF27272A);
+        btnStandalone.setTextColor(0xFFFFFFFF);
+        btnStandalone.setOnClickListener(v -> {
+            if (mLocalServer != null && !mLocalServer.isRunning()) {
+                mLocalServer.start();
             }
+            loadServerUrl(DEFAULT_STANDALONE_URL);
         });
         LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         btnParams.setMargins(0, 0, 0, 16);
-        mErrorLayout.addView(btnUsb, btnParams);
+        mErrorLayout.addView(btnStandalone, btnParams);
 
-        // Wi-Fi connect button
+        // Wi-Fi PC server button
         Button btnWifi = new Button(this);
-        btnWifi.setText("Connect via Wi-Fi (192.168.1.21:3000)");
+        btnWifi.setText("Connect to PC via Wi-Fi (192.168.1.21:3000)");
         btnWifi.setBackgroundColor(0xFF18181B);
         btnWifi.setTextColor(0xFFE4E4E7);
-        btnWifi.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                loadServerUrl(DEFAULT_WIFI_URL);
-            }
-        });
+        btnWifi.setOnClickListener(v -> loadServerUrl(DEFAULT_WIFI_URL));
         mErrorLayout.addView(btnWifi, btnParams);
 
         // Retry button
         Button btnRetry = new Button(this);
         btnRetry.setText("Retry Connection");
-        btnRetry.setBackgroundColor(0xFF27272A);
-        btnRetry.setTextColor(0xFFFFFFFF);
-        btnRetry.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                loadServerUrl(mCurrentUrl);
-            }
-        });
+        btnRetry.setBackgroundColor(0xFF18181B);
+        btnRetry.setTextColor(0xFFA1A1AA);
+        btnRetry.setOnClickListener(v -> loadServerUrl(mCurrentUrl));
         mErrorLayout.addView(btnRetry, btnParams);
 
         // Custom URL button
@@ -239,21 +242,19 @@ public class MainActivity extends Activity {
         btnCustom.setText("Set Custom Server URL...");
         btnCustom.setBackgroundColor(0xFF111113);
         btnCustom.setTextColor(0xFF71717A);
-        btnCustom.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                promptCustomUrl();
-            }
-        });
+        btnCustom.setOnClickListener(v -> promptCustomUrl());
         mErrorLayout.addView(btnCustom, btnParams);
     }
 
     private void handleMainFrameError(String failedUrl) {
-        // Automatic fallback from localhost to WiFi if connected to same router
-        if (failedUrl.contains("localhost") && !mAttemptedWifiFallback) {
-            mAttemptedWifiFallback = true;
-            Toast.makeText(this, "Trying Wi-Fi connection (192.168.1.21:3000)...", Toast.LENGTH_SHORT).show();
-            loadServerUrl(DEFAULT_WIFI_URL);
+        // Automatic fallback to Standalone on-device server if external server fails
+        if (!failedUrl.contains("127.0.0.1") && !mAttemptedStandaloneFallback) {
+            mAttemptedStandaloneFallback = true;
+            Toast.makeText(this, "External server unreachable. Starting Standalone On-Device Engine...", Toast.LENGTH_SHORT).show();
+            if (mLocalServer != null && !mLocalServer.isRunning()) {
+                mLocalServer.start();
+            }
+            loadServerUrl(DEFAULT_STANDALONE_URL);
             return;
         }
 
@@ -262,7 +263,7 @@ public class MainActivity extends Activity {
 
     private void showErrorScreen(String url) {
         if (mErrorDetail != null) {
-            mErrorDetail.setText("Cannot connect to server at:\n" + url + "\n\nMake sure the Next.js server is running on your PC.");
+            mErrorDetail.setText("Cannot connect to server at:\n" + url);
         }
         if (mErrorLayout != null) {
             mErrorLayout.setVisibility(View.VISIBLE);
