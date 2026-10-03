@@ -44,6 +44,15 @@ if (Test-Path $chamberRsc) {
     Copy-Item $chamberRsc (Join-Path $assetsDir "chamber.rsc") -Force
 }
 
+# 5. Duplicate any bracketed directory names (e.g., [id]) to %5Bid%5D
+Get-ChildItem -Path $assetsDir -Recurse -Directory | Where-Object { $_.Name -like "*[*]*" } | ForEach-Object {
+    $encodedName = $_.Name.Replace("[", "%5B").Replace("]", "%5D")
+    $targetDir = Join-Path $_.Parent.FullName $encodedName
+    if (-not (Test-Path $targetDir)) {
+        Copy-Item -Path $_.FullName -Destination $targetDir -Recurse -Force
+    }
+}
+
 $fileCount = (Get-ChildItem -Path $assetsDir -Recurse -File | Measure-Object).Count
 $sumBytes = (Get-ChildItem -Path $assetsDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $totalSizeMB = [math]::Round(($sumBytes / 1MB), 2)

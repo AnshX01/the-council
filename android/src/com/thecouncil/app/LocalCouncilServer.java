@@ -206,6 +206,10 @@ public class LocalCouncilServer {
                 isRsc = true;
             }
 
+            try {
+                path = java.net.URLDecoder.decode(path, "UTF-8");
+            } catch (Exception ignored) {}
+
             // API Route dispatch
             if (path.startsWith("/api/")) {
                 handleApiRoute(method, path, query, body, socket, os);
@@ -283,7 +287,33 @@ public class LocalCouncilServer {
     }
 
     private byte[] loadAssetBytes(String assetPath) {
-        try (InputStream in = mContext.getAssets().open(assetPath)) {
+        // 1. Try direct path
+        byte[] data = tryReadAsset(assetPath);
+        if (data != null) return data;
+
+        // 2. Try URL-decoded path if different
+        try {
+            String decoded = java.net.URLDecoder.decode(assetPath, "UTF-8");
+            if (!decoded.equals(assetPath)) {
+                data = tryReadAsset(decoded);
+                if (data != null) return data;
+            }
+        } catch (Exception ignored) {}
+
+        // 3. Try replacing [id] with %5Bid%5D or vice-versa
+        if (assetPath.contains("[id]")) {
+            data = tryReadAsset(assetPath.replace("[id]", "%5Bid%5D"));
+            if (data != null) return data;
+        } else if (assetPath.contains("%5Bid%5D") || assetPath.contains("%5bid%5d")) {
+            data = tryReadAsset(assetPath.replace("%5Bid%5D", "[id]").replace("%5bid%5d", "[id]"));
+            if (data != null) return data;
+        }
+
+        return null;
+    }
+
+    private byte[] tryReadAsset(String path) {
+        try (InputStream in = mContext.getAssets().open(path)) {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             byte[] buf = new byte[8192];
             int r;

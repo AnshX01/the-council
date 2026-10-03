@@ -71,10 +71,28 @@ public class MainActivity extends Activity {
         mLocalServer.start();
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        mCurrentUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_STANDALONE_URL);
+        String serverHost = prefs.getString(KEY_SERVER_URL, DEFAULT_STANDALONE_URL);
+        if (serverHost == null || serverHost.isEmpty() || serverHost.contains("127.0.0.1")) {
+            serverHost = DEFAULT_STANDALONE_URL;
+        }
+
+        if (getIntent() != null && getIntent().getData() != null) {
+            mCurrentUrl = getIntent().getData().toString();
+        } else {
+            mCurrentUrl = serverHost;
+        }
 
         setupViews();
         loadServerUrl(mCurrentUrl);
+    }
+
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent != null && intent.getData() != null) {
+            loadServerUrl(intent.getData().toString());
+        }
     }
 
     @Override
@@ -144,11 +162,15 @@ public class MainActivity extends Activity {
                 super.onPageFinished(view, url);
                 injectCryptoPolyfill(view);
                 hideErrorScreen();
-                // Save successful URL
-                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(KEY_SERVER_URL, url)
-                    .apply();
+                // Save successful URL host (not page path) so restarts go to home
+                try {
+                    java.net.URI uri = new java.net.URI(url);
+                    String baseOrigin = uri.getScheme() + "://" + uri.getAuthority();
+                    getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        .edit()
+                        .putString(KEY_SERVER_URL, baseOrigin)
+                        .apply();
+                } catch (Exception ignored) {}
                 mAttemptedStandaloneFallback = false;
             }
 

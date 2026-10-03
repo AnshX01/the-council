@@ -132,7 +132,7 @@ export default function HomePage() {
       }
 
       toast.success("Council convened. Entering deliberation chamber...");
-      router.push(`/c/${sessionId}`);
+      window.location.href = `/c/${sessionId}`;
     } catch (err: any) {
       toast.error(err.message || "Failed to create deliberation");
       setIsLoading(false);
