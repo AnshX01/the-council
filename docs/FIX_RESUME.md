@@ -24,3 +24,7 @@
    - **Live Phase Stepper & Center Medallion Progress:** Connected `useSessionStream` reactive events to `selectPhaseState`, dynamically computing `phaseProgress` (tracking opening positions 0-8 and ratification votes 0-8) so top phase bar and center table medallion actively progress instead of freezing at Framing 0%.
    - **Active Speaker Clearing:** Reset speaker state to null once deliberation is finished/completed (`isRunning && !isFinished ? latestMessage.personaId : null`), eliminating persistent speaking rings/pills after completion.
    - **50-50 Split / 4 Dissents Truth in Verdict:** Rewrote synthesis prompts (`buildFinalSynthesisPrompt`), deterministic fallback (`generateFallbackFinalSynthesis`), `VerdictSeal`, and `VerdictPanel` so a 4-4 vote is accurately reported as `Divided Council (50-50 Split)` rather than falsely declaring a majority verdict.
+5. **Standalone On-Device Mobile Engine (`TheCouncil.apk`)**
+   - Embedded lightweight HTTP & deliberation engine (`LocalCouncilServer.java`) listening on `127.0.0.1:3000` inside Android process; 0 reliance on PC server or ADB port forwarding.
+   - Resolved `crypto.randomUUID` in Android WebView via `safeRandomUUID()` RFC4122 v4 fallback and dual script polyfill injection.
+   - Automated dynamic route templating (`assets_prep_chamber.html` and `.rsc`) and URL-decoded `%5Bid%5D` asset resolution so webpack dynamic imports and deliberations run end-to-end on Android. Verified complete live run on OnePlus CPH2585.
