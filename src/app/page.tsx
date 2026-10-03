@@ -22,7 +22,7 @@ import { PersonaDrawer } from "@/components/council/RoundTable/PersonaDrawer";
 import { PersonaGlyph } from "@/components/council/PersonaGlyph";
 import { useEngineStatus, useSettings } from "@/lib/ui/hooks";
 import { toast } from "@/components/ui/Toast";
-import { cn } from "@/lib/utils";
+import { cn, safeRandomUUID } from "@/lib/utils";
 
 const TEMPLATES = [
   {
@@ -102,7 +102,7 @@ export default function HomePage() {
     setIsLoading(true);
 
     try {
-      const idempotencyKey = crypto.randomUUID();
+      const idempotencyKey = safeRandomUUID();
       const res = await fetch("/api/v1/sessions", {
         method: "POST",
         headers: {

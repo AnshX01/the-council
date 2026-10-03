@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -133,8 +134,15 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                injectCryptoPolyfill(view);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                injectCryptoPolyfill(view);
                 hideErrorScreen();
                 // Save successful URL
                 getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -307,6 +315,29 @@ public class MainActivity extends Activity {
         });
         builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
         builder.show();
+    }
+
+    private void injectCryptoPolyfill(WebView view) {
+        if (view == null) return;
+        String js = "(function() {" +
+            "  try {" +
+            "    if (!window.crypto) window.crypto = {};" +
+            "    if (!window.crypto.randomUUID) {" +
+            "      window.crypto.randomUUID = function() {" +
+            "        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {" +
+            "          var r = Math.random() * 16 | 0;" +
+            "          var v = c === 'x' ? r : (r & 0x3 | 0x8);" +
+            "          return v.toString(16);" +
+            "        });" +
+            "      };" +
+            "    }" +
+            "  } catch (e) {}" +
+            "})();";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            view.evaluateJavascript(js, null);
+        } else {
+            view.loadUrl("javascript:" + js);
+        }
     }
 
     @Override

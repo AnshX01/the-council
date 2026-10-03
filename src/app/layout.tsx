@@ -61,6 +61,16 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               try {
+                if (typeof window !== 'undefined' && (!window.crypto || !window.crypto.randomUUID)) {
+                  if (!window.crypto) (window as any).crypto = {};
+                  window.crypto.randomUUID = function() {
+                    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                      var r = Math.random() * 16 | 0;
+                      var v = c === 'x' ? r : (r & 0x3 | 0x8);
+                      return v.toString(16);
+                    });
+                  };
+                }
                 const t = localStorage.getItem('the_council_theme');
                 if (t === 'light') {
                   document.documentElement.classList.remove('dark');
